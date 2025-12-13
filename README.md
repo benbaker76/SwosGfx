@@ -1,7 +1,11 @@
 # SwosGfx
 Tool for generating or extracting graphics data and palettes for SWOS
 
-![](images/tiled.png)
+### Screenshots
+
+![](images/tiled_00.png)
+
+![](images/tiled_01.png)
 
 ### Amiga usage
 
