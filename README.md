@@ -1,6 +1,8 @@
 # SwosGfx
 Tool for generating or extracting graphics data and palettes for SWOS
 
+![](images/tiled.png)
+
 ### Amiga usage
 
 ```bash
@@ -157,6 +159,43 @@ SwosGfx -palettes -pal-color=amiga12 -pal-file=asm -pal-count=16
 
 # Export 256-color DOS palettes as GIMP .gpl files
 SwosGfx -palettes -pal-color=rgb32 -pal-file=palette -pal-count=256 -pal-full -pal-format=gimp
+```
+
+Nice, TMX buddies coming right up 😄
+Here are some extra examples you can drop into your **Examples** section, focused specifically on **DOS → TMX** and **Amiga →/from TMX**.
+
+#### DOS ↔ TMX examples
+
+```bash
+# Render DOS pitch 3, SOFT type, directly to a Tiled .tmx map
+# Uses DOS pitch patterns + DOS palette from ./DOS
+SwosGfx -dos -dos-dir=DOS -output=tmx -pitch=3 -type=soft -colors=128 pitch3-soft.tmx
+
+# Render DOS pitch 5, DRY type, full 256 colors into TMX
+SwosGfx -dos -dos-dir=DOS -output=tmx -pitch=5 -type=dry -colors=256 pitch5-dry-256.tmx
+````
+#### Amiga ↔ TMX examples
+
+```bash
+# Convert an Amiga .MAP pitch (AGA, 7 bitplanes) to a Tiled .tmx map
+# Uses a named pitch palette (Normal)
+SwosGfx -amiga -map -output=tmx -palette=Normal -bitplanes=7 SWCPICH1.MAP pitch1-normal-aga.tmx
+
+# Same, but OCS/ECS 16-color pitch using 4 bitplanes
+SwosGfx -amiga -map -output=tmx -palette=Soft -bitplanes=4 SWCPICH2.MAP pitch2-soft-ecs.tmx
+
+# Take a TMX edited in Tiled and convert it back into an Amiga .MAP (AGA)
+SwosGfx -amiga -tmx -output=map -bitplanes=7 pitch1-normal-aga-edited.tmx SWCPICH1.MAP
+
+# DOS → BMP → Amiga TMX roundtrip:
+# 1) Generate DOS pitch BMP
+SwosGfx -dos -dos-dir=DOS -output=bmp -pitch=2 -type=wet -colors=128 dos-pitch3-wet.bmp
+
+# 2) Convert that BMP to Amiga .MAP (AGA, 7 bitplanes)
+SwosGfx -amiga -bmp -output=map -bitplanes=7 dos-pitch3-wet.bmp SWCPICH3.MAP
+
+# 3) Export Amiga .MAP to TMX for editing in Tiled
+SwosGfx -amiga -map -output=tmx -palette=Wet -bitplanes=7 SWCPICH3.MAP pitch3-wet-aga.tmx
 ```
 
 ## Credits
