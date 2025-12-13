@@ -164,11 +164,7 @@ SwosGfx -palettes -pal-color=amiga12 -pal-file=asm -pal-count=16
 # Export 256-color DOS palettes as GIMP .gpl files
 SwosGfx -palettes -pal-color=rgb32 -pal-file=palette -pal-count=256 -pal-full -pal-format=gimp
 ```
-
-Nice, TMX buddies coming right up 😄
-Here are some extra examples you can drop into your **Examples** section, focused specifically on **DOS → TMX** and **Amiga →/from TMX**.
-
-#### DOS ↔ TMX examples
+#### DOS TMX Examples
 
 ```bash
 # Render DOS pitch 3, SOFT type, directly to a Tiled .tmx map
@@ -177,8 +173,9 @@ SwosGfx -dos -dos-dir=DOS -output=tmx -pitch=3 -type=soft -colors=128 pitch3-sof
 
 # Render DOS pitch 5, DRY type, full 256 colors into TMX
 SwosGfx -dos -dos-dir=DOS -output=tmx -pitch=5 -type=dry -colors=256 pitch5-dry-256.tmx
-````
-#### Amiga ↔ TMX examples
+```
+
+#### Amiga TMX Examples
 
 ```bash
 # Convert an Amiga .MAP pitch (AGA, 7 bitplanes) to a Tiled .tmx map
