@@ -303,13 +303,9 @@ namespace SwosGfx
         public bool SaveSpriteToBmp(
             int spriteIndex,
             byte backgroundIndex,
-            uint[] menuPal,
-            uint[] gamePal,
             string filePath)
         {
             if (filePath == null) throw new ArgumentNullException(nameof(filePath));
-            if (menuPal == null) throw new ArgumentNullException(nameof(menuPal));
-            if (gamePal == null) throw new ArgumentNullException(nameof(gamePal));
 
             if (spriteIndex < 0 || spriteIndex >= NumSprites)
                 return false;
@@ -359,7 +355,7 @@ namespace SwosGfx
             {
                 // First 16 colors from menu palette indices 0..15
                 for (int i = 0; i < 16; i++)
-                    bmpPalette[i] = menuPal[i];
+                    bmpPalette[i] = DosPalette.Menu[i];
             }
             else
             {
@@ -367,16 +363,16 @@ namespace SwosGfx
                 for (int i = 0; i < 16; i++)
                 {
                     int idx = i | 0x70;
-                    bmpPalette[i] = gamePal[idx];
+                    bmpPalette[i] = DosPalette.Game[idx];
                 }
             }
 
             // Transparent/background color (slot 16) from menu palette bk index
-            bmpPalette[16] = menuPal[backgroundIndex];
+            bmpPalette[16] = DosPalette.Menu[backgroundIndex];
 
             // The rest: just copy from menu palette to keep BMP "full" 256 colors.
             for (int i = 17; i < 256; i++)
-                bmpPalette[i] = menuPal[i];
+                bmpPalette[i] = DosPalette.Menu[i];
 
             // Ensure directory exists
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(filePath)) ?? ".");
@@ -391,9 +387,7 @@ namespace SwosGfx
         /// </summary>
         public void SaveAllSpritesToDirectory(
             string directoryPath,
-            byte backgroundIndex,
-            uint[] menuPal,
-            uint[] gamePal)
+            byte backgroundIndex)
         {
             if (directoryPath == null) throw new ArgumentNullException(nameof(directoryPath));
 
@@ -403,7 +397,7 @@ namespace SwosGfx
             {
                 string name = $"spr{i:D4}.bmp";
                 string path = Path.Combine(directoryPath, name);
-                SaveSpriteToBmp(i, backgroundIndex, menuPal, gamePal, path);
+                SaveSpriteToBmp(i, backgroundIndex, path);
             }
         }
 

@@ -1,11 +1,9 @@
 ﻿using SwosGfx;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 
 class Program
 {
@@ -50,10 +48,13 @@ class Program
         // Amiga-style I/O
         public InputKind Input = InputKind.Unspecified;
         public OutputKind Output = OutputKind.Unspecified;
-        public RawFormat? RawFormat;
         public string? PaletteName;
         public int Bitplanes = 4; // default 4 planes → 16 colors
         public bool NoRnc = false;
+        public int AmigaColorCount = 16;
+
+        // Amiga directory
+        public string AmigaDirectory = "Amiga";
 
         // DOS directory
         public string DosDirectory = "DOS";
@@ -64,14 +65,14 @@ class Program
         // DOS pitch rendering
         public int PitchIndex = 0;
         public DosPitchType PitchType = DosPitchType.Normal;
-        public int Colors = 256; // Reduce to N colors (16-256)
+        public int DosColorCount = 256; // Reduce to N colors (16-256)
 
         // DOS sprite options
         public byte SpriteBackgroundIndex = 0; // menu-palette index for background (color 16 in BMP)
 
         public List<string> Files = new();
 
-        // --- NEW: palette export options ---
+        // --- palette export options ---
         public bool PaletteMode = false;
         public AmigaPalette.ColorFormat PaletteColorFormat = AmigaPalette.ColorFormat.Amiga12;
         public AmigaPalette.FileFormat PaletteFileFormat = AmigaPalette.FileFormat.Asm;
@@ -82,8 +83,9 @@ class Program
 
     public static int Main(string[] args)
     {
-        //args = new string[] { "-map", "-output=bmp", "-bitplanes=7", "Amiga_AGA\\SWCPICH1.MAP", "pitch1-amiga-aga.bmp" };
-        //args = new string[] { "-palettes", "-pal-color=rgb32", "-pal-file=palette", "-pal-count=256", "-pal-full", "-pal-format=act" };
+        uint[] loaderPal = AmigaPalette.PaletteFromAmiga12(AmigaPalette.TitleScreen);
+
+        AmigaPalette.PaletteToPalette("LOADER", loaderPal, PaletteFormat.PaintNET);
 
         if (args.Length < 1)
         {
@@ -203,9 +205,16 @@ class Program
                 options.Platform = PlatformKind.Dos;
                 options.PlatformExplicitlySet = true;
             }
+            else if (lower.StartsWith("-amiga-dir="))
+            {
+                // Preserve case (do not use 'lower' substring here)
+                string value = arg.Substring("-amiga-dir=".Length);
+                options.AmigaDirectory = value;
+            }
             else if (lower.StartsWith("-dos-dir="))
             {
-                string value = lower.Substring("-dos-dir=".Length);
+                // Preserve case (do not use 'lower' substring here)
+                string value = arg.Substring("-dos-dir=".Length);
                 options.DosDirectory = value;
             }
             else if (lower == "-picture")
@@ -249,7 +258,7 @@ class Program
             {
                 if (options.Input != InputKind.Unspecified && options.Input != InputKind.Map)
                 {
-                    error = "Multiple input kinds specified. Use only one of: -map, -tmx, -bmp, -raw320, -raw352.";
+                    error = "Multiple input kinds specified. Use only one of: -map, -tmx, -bmp, -raw.";
                     return false;
                 }
                 options.Input = InputKind.Map;
@@ -258,7 +267,7 @@ class Program
             {
                 if (options.Input != InputKind.Unspecified && options.Input != InputKind.Tmx)
                 {
-                    error = "Multiple input kinds specified. Use only one of: -map, -tmx, -bmp, -raw320, -raw352.";
+                    error = "Multiple input kinds specified. Use only one of: -map, -tmx, -bmp, -raw.";
                     return false;
                 }
                 options.Input = InputKind.Tmx;
@@ -267,40 +276,19 @@ class Program
             {
                 if (options.Input != InputKind.Unspecified && options.Input != InputKind.Bmp)
                 {
-                    error = "Multiple input kinds specified. Use only one of: -map, -tmx, -bmp, -raw320, -raw352.";
+                    error = "Multiple input kinds specified. Use only one of: -map, -tmx, -bmp, -raw.";
                     return false;
                 }
                 options.Input = InputKind.Bmp;
             }
-            else if (lower == "-raw320")
+            else if (lower == "-raw")
             {
                 if (options.Input != InputKind.Unspecified && options.Input != InputKind.Raw)
                 {
-                    error = "Multiple input kinds specified. Use only one of: -map, -tmx, -bmp, -raw320, -raw352.";
-                    return false;
-                }
-                if (options.RawFormat.HasValue && options.RawFormat.Value != RawFormat.Raw320x256)
-                {
-                    error = "Conflicting RAW formats specified (-raw320 and -raw352).";
+                    error = "Multiple input kinds specified. Use only one of: -map, -tmx, -bmp, -raw.";
                     return false;
                 }
                 options.Input = InputKind.Raw;
-                options.RawFormat = RawFormat.Raw320x256;
-            }
-            else if (lower == "-raw352")
-            {
-                if (options.Input != InputKind.Unspecified && options.Input != InputKind.Raw)
-                {
-                    error = "Multiple input kinds specified. Use only one of: -map, -tmx, -bmp, -raw320, -raw352.";
-                    return false;
-                }
-                if (options.RawFormat.HasValue && options.RawFormat.Value != RawFormat.Raw352x272)
-                {
-                    error = "Conflicting RAW formats specified (-raw320 and -raw352).";
-                    return false;
-                }
-                options.Input = InputKind.Raw;
-                options.RawFormat = RawFormat.Raw352x272;
             }
             else if (lower.StartsWith("-output="))
             {
@@ -342,17 +330,18 @@ class Program
             else if (lower.StartsWith("-bitplanes="))
             {
                 string value = lower.Substring("-bitplanes=".Length);
-                if (!int.TryParse(value, out int planes))
+                if (!int.TryParse(value, out int bitplanes))
                 {
                     error = $"Invalid bitplanes value '{value}'. Expected integer 1-8.";
                     return false;
                 }
-                if (planes < 1 || planes > 8)
+                if (bitplanes < 1 || bitplanes > 8)
                 {
                     error = "Bitplanes must be between 1 and 8 (4=16 colors, 8=256 colors).";
                     return false;
                 }
-                options.Bitplanes = planes;
+                options.Bitplanes = bitplanes;
+                options.AmigaColorCount = AmigaPalette.BitplanesToColors(bitplanes);
             }
             else if (lower == "-no-rnc")
             {
@@ -381,12 +370,13 @@ class Program
             else if (lower.StartsWith("-colors="))
             {
                 string value = lower.Substring("-colors=".Length);
-                if (!int.TryParse(value, out int colors) || colors < 16 || colors > 256)
+                if (!int.TryParse(value, out int colorCount) || colorCount < 16 || colorCount > 256)
                 {
                     error = $"Invalid colors '{value}'. Expected range 16-256.";
                     return false;
                 }
-                options.Colors = colors;
+                options.AmigaColorCount = colorCount;
+                options.DosColorCount = colorCount;
             }
             else if (lower == "-palettes")
             {
@@ -516,7 +506,7 @@ class Program
         {
             if (options.Input == InputKind.Unspecified)
             {
-                error = "No input type specified. Use one of: -map, -tmx, -bmp, -raw320, -raw352.";
+                error = "No input type specified. Use one of: -map, -tmx, -bmp, -raw.";
                 return false;
             }
 
@@ -526,17 +516,33 @@ class Program
                 return false;
             }
 
-            if ((options.Input == InputKind.Raw || options.Output == OutputKind.Raw) && !options.RawFormat.HasValue)
+            if (options.Files.Count == 2)
             {
-                error = "RAW format must be specified using -raw320 or -raw352.";
-                return false;
+                // Existing explicit in/out behavior stays intact.
+                return true;
             }
 
-            if (options.Files.Count != 2)
+            if (options.Files.Count == 0 || options.Files.Count == 1)
             {
-                error = $"Expected 2 file arguments (input and output), got {options.Files.Count}.";
-                return false;
+                // Batch mode: input comes from AmigaDirectory; optional one arg is output directory.
+                bool supported =
+                    (options.Input == InputKind.Raw && options.Output == OutputKind.Bmp) ||
+                    (options.Input == InputKind.Map && (options.Output == OutputKind.Bmp || options.Output == OutputKind.Tmx));
+
+                if (!supported)
+                {
+                    error =
+                        $"In Amiga batch mode (0 or 1 positional args), supported conversions are: " +
+                        $"-raw -output=bmp, -map -output=bmp, -map -output=tmx. " +
+                        $"For other conversions, specify explicit input and output paths.";
+                    return false;
+                }
+
+                return true;
             }
+
+            error = $"Too many file arguments for Amiga mode. Expected 0/1 (batch) or 2 (in out), got {options.Files.Count}.";
+            return false;
         }
         else // DOS
         {
@@ -557,13 +563,14 @@ class Program
 
                     if (options.Input != InputKind.Unspecified)
                     {
-                        error = "In -dos pitch mode, do not specify -map/-tmx/-bmp/-raw320/-raw352; input is implicit.";
+                        error = "In -dos pitch mode, do not specify -map/-tmx/-bmp/-raw; input is implicit.";
                         return false;
                     }
 
-                    if (options.Files.Count != 1)
+                    // NEW: 0 args => current dir, 1 arg => output dir
+                    if (options.Files.Count > 1)
                     {
-                        error = $"In -dos pitch mode, expected 1 file argument (output path), got {options.Files.Count}.";
+                        error = $"In -dos pitch mode, expected 0 or 1 argument (output directory), got {options.Files.Count}.";
                         return false;
                     }
                     break;
@@ -583,7 +590,7 @@ class Program
 
                     if (options.Input != InputKind.Unspecified)
                     {
-                        error = "In -dos -picture mode, do not specify -map/-tmx/-bmp/-raw320/-raw352; input is implicit (.256).";
+                        error = "In -dos -picture mode, do not specify -map/-tmx/-bmp/-raw; input is implicit (.256).";
                         return false;
                     }
 
@@ -597,7 +604,7 @@ class Program
                 case DosMode.SpritesExport:
                     if (options.Input != InputKind.Unspecified)
                     {
-                        error = "In -dos -sprites-export mode, do not specify -map/-tmx/-bmp/-raw320/-raw352; input is implicit from DOS folder.";
+                        error = "In -dos -sprites-export mode, do not specify -map/-tmx/-bmp/-raw; input is implicit from DOS folder.";
                         return false;
                     }
 
@@ -612,9 +619,10 @@ class Program
                         return false;
                     }
 
-                    if (options.Files.Count != 1)
+                    // NEW: 0 args => current dir, 1 arg => output dir
+                    if (options.Files.Count > 1)
                     {
-                        error = $"In -dos -sprites-export mode, expected 1 argument (output directory), got {options.Files.Count}.";
+                        error = $"In -dos -sprites-export mode, expected 0 or 1 argument (output directory), got {options.Files.Count}.";
                         return false;
                     }
                     break;
@@ -622,7 +630,7 @@ class Program
                 case DosMode.SpritesImport:
                     if (options.Input != InputKind.Unspecified)
                     {
-                        error = "In -dos -sprites-import mode, do not specify -map/-tmx/-bmp/-raw320/-raw352; input is implicit from sprNNNN.bmp files.";
+                        error = "In -dos -sprites-import mode, do not specify -map/-tmx/-bmp/-raw; input is implicit from sprNNNN.bmp files.";
                         return false;
                     }
 
@@ -646,90 +654,207 @@ class Program
 
     private static int RunAmiga(AmigaTools conv, CliOptions opts)
     {
-        string inputPath = opts.Files[0];
-        string outputPath = opts.Files[1];
-        int bitplanes = opts.Bitplanes;
+        string appPath = AppDomain.CurrentDomain.BaseDirectory;
+        string amigaDir = Path.Combine(appPath, opts.AmigaDirectory);
 
-        uint[] GetPaletteRequired()
+        (uint[] pal, uint[]? newPal) GetPaletteRequired(string fileName)
         {
-            if (opts.PaletteName == null)
-                return opts.Bitplanes > 4 ? DosPalette.Menu : AmigaPalette.Menu;
+            if (opts.PaletteName != null)
+                return (ResolvePalette(opts.PaletteName, opts.AmigaColorCount), null);
 
-            return ResolvePalette(opts.PaletteName, opts.Bitplanes);
+            string name = Path.GetFileNameWithoutExtension(fileName);
+            uint[]? menuPalette = opts.AmigaColorCount > 16 ? DosPalette.Menu.Take(opts.AmigaColorCount).ToArray() : null;
+            uint[]? gamePalette = opts.AmigaColorCount > 16 ? DosPalette.Game.Take(opts.AmigaColorCount).ToArray() : null;
+
+            if (name.StartsWith("LOADER", StringComparison.OrdinalIgnoreCase))
+            {
+                string loaderIndex = name.Substring(6).ToLower();
+
+                switch (loaderIndex)
+                {
+                    case "00":
+                        return (AmigaPalette.PaletteFromAmiga12(AmigaPalette.TitleLogo), menuPalette);
+                    case "1":
+                        return (AmigaPalette.PaletteFromAmiga12(AmigaPalette.TitleScreen), menuPalette);
+                    default:
+                        return (AmigaPalette.PaletteFromAmiga12(AmigaPalette.TitleText), menuPalette);
+                }
+            }
+
+            if (name.StartsWith("MENU", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("SOCCER", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("DISK", StringComparison.OrdinalIgnoreCase))
+            {
+                return (AmigaPalette.PaletteFromAmiga12(AmigaPalette.Menu), menuPalette);
+            }
+
+            if (name.StartsWith("CJC", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("CHARSET", StringComparison.OrdinalIgnoreCase))
+            {
+                return (AmigaPalette.PaletteFromAmiga12(AmigaPalette.Menu), gamePalette);
+            }
+
+            return (ResolvePalette(opts.PaletteName, opts.AmigaColorCount), null);
         }
 
         uint[]? GetPaletteOptional()
         {
-            return opts.PaletteName != null ? ResolvePalette(opts.PaletteName, opts.Bitplanes) : null;
+            return opts.PaletteName != null ? ResolvePalette(opts.PaletteName, opts.AmigaColorCount) : null;
         }
+
+        bool isBatch = opts.Files.Count <= 1;
+
+        if (!isBatch)
+        {
+            // Explicit input/output (existing behavior)
+            string inputPath = opts.Files[0];
+            string outputPath = opts.Files[1];
+
+            switch (opts.Output)
+            {
+                case OutputKind.Bmp:
+                    switch (opts.Input)
+                    {
+                        case InputKind.Map:
+                            {
+                                uint[]? pal = GetPaletteOptional();
+                                conv.ConvertPitchMapToBmp(inputPath, pal, outputPath, null, opts.Bitplanes, opts.AmigaColorCount);
+                                return 0;
+                            }
+
+                        case InputKind.Raw:
+                            {
+                                (var pal, var newPal) = GetPaletteRequired(opts.Files[0]);
+                                conv.ConvertRawToBmp(inputPath, pal, outputPath, newPal, opts.Bitplanes, opts.AmigaColorCount);
+                                return 0;
+                            }
+
+                        default:
+                            throw new ArgumentException("Invalid combination: -output=bmp requires -map or -raw as input.");
+                    }
+
+                case OutputKind.Tmx:
+                    if (opts.Input != InputKind.Map)
+                        throw new ArgumentException("Invalid combination: -output=tmx requires -map as input.");
+
+                    {
+                        (var pal, var newPal) = GetPaletteRequired(opts.Files[0]);
+                        conv.ConvertPitchMapToTiled(inputPath, pal, outputPath, newPal, opts.Bitplanes, opts.AmigaColorCount);
+                        return 0;
+                    }
+
+                case OutputKind.Map:
+                    switch (opts.Input)
+                    {
+                        case InputKind.Tmx:
+                            conv.ConvertTiledToPitchMap(inputPath, outputPath, 284, opts.Bitplanes);
+                            return 0;
+
+                        case InputKind.Bmp:
+                            conv.ConvertFullPitchBmpToMap(inputPath, outputPath, 284, opts.Bitplanes);
+                            return 0;
+
+                        default:
+                            throw new ArgumentException("Invalid combination: -output=map requires -tmx or -bmp as input.");
+                    }
+
+                case OutputKind.Raw:
+                    if (opts.Input != InputKind.Bmp)
+                        throw new ArgumentException("Invalid combination: -output=raw requires -bmp as input.");
+
+                    {
+                        (var pal, var newPal) = GetPaletteRequired(opts.Files[0]);
+                        conv.ConvertBmpToRaw(inputPath, pal, outputPath, opts.Bitplanes);
+                        return 0;
+                    }
+
+                default:
+                    throw new ArgumentException("Unknown output kind.");
+            }
+        }
+
+        // -----------------------------
+        // Batch mode (0/1 positional arg)
+        // -----------------------------
+        string outDir = opts.Files.Count == 0 ? Environment.CurrentDirectory : opts.Files[0];
+        if (string.IsNullOrWhiteSpace(outDir))
+            outDir = Environment.CurrentDirectory;
+
+        Directory.CreateDirectory(outDir);
+
+        string inputGlob;
+        string outputExt;
 
         switch (opts.Output)
         {
             case OutputKind.Bmp:
-                switch (opts.Input)
-                {
-                    case InputKind.Map:
-                        {
-                            uint[]? pal = GetPaletteOptional();
-                            conv.ConvertPitchMapToBmp(inputPath, pal, outputPath, bitplanes);
-                            return 0;
-                        }
-
-                    case InputKind.Raw:
-                        {
-                            if (!opts.RawFormat.HasValue)
-                                throw new ArgumentException("RAW format must be specified using -raw320 or -raw352.");
-
-                            uint[] pal = GetPaletteRequired();
-                            conv.ConvertRawToBmp(inputPath, pal, outputPath, opts.RawFormat.Value, bitplanes);
-                            return 0;
-                        }
-
-                    default:
-                        throw new ArgumentException("Invalid combination: -output=bmp requires -map or -raw320/-raw352 as input.");
-                }
-
+                outputExt = ".bmp";
+                break;
             case OutputKind.Tmx:
-                if (opts.Input != InputKind.Map)
-                    throw new ArgumentException("Invalid combination: -output=tmx requires -map as input.");
+                outputExt = ".tmx";
+                break;
+            default:
+                throw new ArgumentException("Batch mode currently supports only -output=bmp or -output=tmx in Amiga mode.");
+        }
 
-                {
-                    uint[] pal = GetPaletteRequired();
-                    conv.ConvertPitchMapToTiled(inputPath, pal, outputPath, bitplanes);
-                    return 0;
-                }
+        switch (opts.Input)
+        {
+            case InputKind.Raw:
+                if (opts.Output != OutputKind.Bmp)
+                    throw new ArgumentException("Amiga batch: -raw supports only -output=bmp.");
+                inputGlob = "*.raw";
+                break;
 
-            case OutputKind.Map:
-                switch (opts.Input)
-                {
-                    case InputKind.Tmx:
-                        conv.ConvertTiledToPitchMap(inputPath, outputPath, 284, bitplanes);
-                        return 0;
-
-                    case InputKind.Bmp:
-                        conv.ConvertFullPitchBmpToMap(inputPath, outputPath, 284, bitplanes);
-                        return 0;
-
-                    default:
-                        throw new ArgumentException("Invalid combination: -output=map requires -tmx or -bmp as input.");
-                }
-
-            case OutputKind.Raw:
-                if (opts.Input != InputKind.Bmp)
-                    throw new ArgumentException("Invalid combination: -output=raw requires -bmp as input.");
-
-                if (!opts.RawFormat.HasValue)
-                    throw new ArgumentException("RAW format must be specified using -raw320 or -raw352.");
-
-                {
-                    uint[] pal = GetPaletteRequired();
-                    conv.ConvertBmpToRaw(inputPath, pal, outputPath, opts.RawFormat.Value, bitplanes);
-                    return 0;
-                }
+            case InputKind.Map:
+                if (opts.Output != OutputKind.Bmp && opts.Output != OutputKind.Tmx)
+                    throw new ArgumentException("Amiga batch: -map supports only -output=bmp or -output=tmx.");
+                inputGlob = "*.map";
+                break;
 
             default:
-                throw new ArgumentException("Unknown output kind.");
+                throw new ArgumentException("Amiga batch mode supports only -raw or -map inputs.");
         }
+
+        int converted = 0;
+
+        foreach (var inPath in Directory.EnumerateFiles(amigaDir, inputGlob, SearchOption.AllDirectories))
+        {
+            string baseName = Path.GetFileNameWithoutExtension(inPath);
+            string outPath = Path.Combine(outDir, baseName + outputExt);
+
+            switch (opts.Output)
+            {
+                case OutputKind.Bmp:
+                    if (opts.Input == InputKind.Raw)
+                    {
+                        (var pal, var newPal) = GetPaletteRequired(inPath);
+                        conv.ConvertRawToBmp(inPath, pal, outPath, newPal, opts.Bitplanes, opts.AmigaColorCount);
+                        converted++;
+                    }
+                    else if (opts.Input == InputKind.Map)
+                    {
+                        uint[]? pal = GetPaletteOptional();
+                        conv.ConvertPitchMapToBmp(inPath, pal, outPath, null, opts.Bitplanes, opts.AmigaColorCount);
+                        converted++;
+                    }
+                    break;
+
+                case OutputKind.Tmx:
+                    if (opts.Input != InputKind.Map)
+                        throw new ArgumentException("Amiga batch: -output=tmx requires -map.");
+                    {
+                        (var pal, var newPal) = GetPaletteRequired(inPath);
+                        conv.ConvertPitchMapToTiled(inPath, pal, outPath, newPal, opts.Bitplanes, opts.AmigaColorCount);
+                        converted++;
+                    }
+                    break;
+            }
+        }
+
+        if (converted == 0)
+            Console.Error.WriteLine($"Warning: No files matched '{inputGlob}' in '{amigaDir}'.");
+
+        return 0;
     }
 
     private static int RunDos(CliOptions opts)
@@ -741,63 +866,88 @@ class Program
         {
             case DosMode.Pitch:
                 {
-                    string outPath = opts.Files[0];
+                    string outDir = opts.Files.Count == 0 ? Environment.CurrentDirectory : opts.Files[0];
                     var patterns = DosPitchPattern.LoadFromDirectory(dosDir);
                     var pitchRenderer = new DosPitch(patterns);
 
-                    switch (opts.Output)
+                    string typeName = opts.PitchType.ToString().ToLowerInvariant();
+                    string ext = opts.Output == OutputKind.Bmp ? "bmp" : "tmx";
+
+                    for (int i = 0; i < 6; i++)
                     {
-                        case OutputKind.Bmp:
-                            pitchRenderer.SavePitchAsBmp(
-                                pitchIndex: opts.PitchIndex,
-                                pitchType: opts.PitchType,
-                                path: outPath,
-                                colorCount: opts.Colors);
-                            return 0;
+                        string fileName = $"pitch{i + 1}-{typeName}.{ext}";
+                        string outPath = Path.Combine(outDir, fileName);
 
-                        case OutputKind.Tmx:
-                            pitchRenderer.SavePitchAsTmx(
-                                pitchIndex: opts.PitchIndex,
-                                pitchType: opts.PitchType,
-                                path: outPath,
-                                colorCount: opts.Colors);
-                            return 0;
+                        switch (opts.Output)
+                        {
+                            case OutputKind.Bmp:
+                                pitchRenderer.SavePitchAsBmp(
+                                    pitchIndex: i,
+                                    pitchType: opts.PitchType,
+                                    path: outPath,
+                                    colorCount: opts.DosColorCount);
+                                break;
 
-                        default:
-                            throw new ArgumentException("In -dos pitch mode, only -output=bmp or -output=tmx are supported.");
+                            case OutputKind.Tmx:
+                                pitchRenderer.SavePitchAsTmx(
+                                    pitchIndex: i,
+                                    pitchType: opts.PitchType,
+                                    path: outPath,
+                                    colorCount: opts.DosColorCount);
+                                break;
+
+                            default:
+                                throw new ArgumentException("In -dos pitch mode, only -output=bmp or -output=tmx are supported.");
+                        }
                     }
-                }
 
+                    return 0;
+                }
             case DosMode.Picture:
                 {
-                    string inPic = opts.Files[0];
-                    string outBmp = opts.Files[1];
+                    if (opts.Files.Count > 1)
+                    {
+                        string inPic = opts.Files[0];
+                        string outBmp = opts.Files[1];
 
-                    var pic = DosPicture.Load(inPic);
-                    if (pic.Error != DosPictureError.None || !pic.IsLoaded)
-                        throw new InvalidOperationException($"Failed to load DOS picture '{inPic}': {pic.Error}");
+                        var pic = DosPicture.Load(inPic);
+                        if (pic.Error != DosPictureError.None || !pic.IsLoaded)
+                            throw new InvalidOperationException($"Failed to load DOS picture '{inPic}': {pic.Error}");
 
-                    pic.SaveAsBmp(outBmp);
+                        pic.SaveAsBmp(outBmp);
+                    }
+                    else
+                    {
+                        string[] files = Directory.GetFiles(dosDir, "*.256");
+
+                        foreach (string file in files)
+                        {
+                            string outBmp = Path.ChangeExtension(Path.GetFileName(file), ".bmp");
+                            var pic = DosPicture.Load(file);
+                            if (pic.Error != DosPictureError.None || !pic.IsLoaded)
+                                throw new InvalidOperationException($"Failed to load DOS picture '{file}': {pic.Error}");
+
+                            pic.SaveAsBmp(outBmp);
+                        }
+                    }
+
                     return 0;
                 }
 
             case DosMode.SpritesExport:
                 {
-                    string outDir = opts.Files[0];
+                    // NEW: 0 => current dir, 1 => output directory
+                    string outDir = opts.Files.Count == 0 ? Environment.CurrentDirectory : opts.Files[0];
+                    if (string.IsNullOrWhiteSpace(outDir))
+                        outDir = Environment.CurrentDirectory;
+
                     Directory.CreateDirectory(outDir);
 
                     var sprites = DosSprite.Load(dosDir);
 
-                    // Assumes you have static palettes somewhere, e.g. DosPal.MenuPalette / DosPal.GamePalette.
-                    // Adjust these names if your actual palette class uses different identifiers.
-                    uint[] menuPal = DosPalette.Menu;
-                    uint[] gamePal = DosPalette.Game;
-
                     sprites.SaveAllSpritesToDirectory(
                         directoryPath: outDir,
-                        backgroundIndex: opts.SpriteBackgroundIndex,
-                        menuPal: menuPal,
-                        gamePal: gamePal);
+                        backgroundIndex: opts.SpriteBackgroundIndex);
 
                     return 0;
                 }
@@ -825,23 +975,26 @@ class Program
     private static void PrintUsage()
     {
         Assembly assembly = Assembly.GetExecutingAssembly();
-        FileVersionInfo fileVersionInfo = FileVersionInfo.GetVersionInfo(assembly.Location);
+        var version = assembly.GetName().Version;
 
-        Console.WriteLine($"SwosGfx v{fileVersionInfo.ProductVersion} - SWOS Amiga/DOS graphics tool");
+        Console.WriteLine($"SwosGfx v{version.ToString(3)} - SWOS Amiga/DOS graphics tool");
         Console.WriteLine();
         Console.WriteLine("Amiga usage:");
         Console.WriteLine("  SwosGfx -amiga -map    -output=bmp  [-palette=<name>] [-bitplanes=N] [-no-rnc] in.map out.bmp");
-        Console.WriteLine("  SwosGfx -amiga -map    -output=tmx  -palette=<name>   [-bitplanes=N] [-no-rnc] in.map out.tmx");
+        Console.WriteLine("  SwosGfx -amiga -map    -output=tmx  [-palette=<name>] [-bitplanes=N] [-no-rnc] in.map out.tmx");
         Console.WriteLine("  SwosGfx -amiga -tmx    -output=map  [-bitplanes=N]    [-no-rnc]      in.tmx out.map");
         Console.WriteLine("  SwosGfx -amiga -bmp    -output=map  [-bitplanes=N]    [-no-rnc]      fullPitch.bmp out.map");
-        Console.WriteLine("  SwosGfx -amiga -bmp    -output=raw  -raw320 -palette=<name> [-bitplanes=N] [-no-rnc] in.bmp out.raw");
-        Console.WriteLine("  SwosGfx -amiga -bmp    -output=raw  -raw352 -palette=<name> [-bitplanes=N] [-no-rnc] in.bmp out.raw");
-        Console.WriteLine("  SwosGfx -amiga -raw320 -output=bmp  -palette=<name> [-bitplanes=N] [-no-rnc] in.raw out.bmp");
-        Console.WriteLine("  SwosGfx -amiga -raw352 -output=bmp  -palette=<name> [-bitplanes=N] [-no-rnc] in.raw out.bmp");
+        Console.WriteLine("  SwosGfx -amiga -bmp    -output=raw  [-palette=<name>] [-bitplanes=N] [-no-rnc] in.bmp out.raw");
+        Console.WriteLine("  SwosGfx -amiga -raw    -output=bmp  [-palette=<name>] [-bitplanes=N] [-no-rnc] in.raw out.bmp");
+        Console.WriteLine();
+        Console.WriteLine("Amiga batch usage (input from ./Amiga or -amiga-dir=..., output to current dir or optional outDir):");
+        Console.WriteLine("  SwosGfx -amiga -raw -output=bmp  [-palette=<name>] [-bitplanes=N] [-no-rnc] [outDir]");
+        Console.WriteLine("  SwosGfx -amiga -map -output=bmp  [-palette=<name>] [-bitplanes=N] [-no-rnc] [outDir]");
+        Console.WriteLine("  SwosGfx -amiga -map -output=tmx  [-palette=<name>] [-bitplanes=N] [-no-rnc] [outDir]");
         Console.WriteLine();
         Console.WriteLine("DOS pitch usage (patterns from ./DOS):");
-        Console.WriteLine("  SwosGfx -dos -output=bmp -pitch=N -type=normal  [-colors128] out.bmp");
-        Console.WriteLine("  SwosGfx -dos -output=tmx -pitch=N -type=normal  [-colors128] out.tmx");
+        Console.WriteLine("  SwosGfx -dos -output=bmp -pitch=N -type=normal  [-colors=N] [outDir]");
+        Console.WriteLine("  SwosGfx -dos -output=tmx -pitch=N -type=normal  [-colors=N] [outDir]");
         Console.WriteLine("    (pitch defaults: -pitch=0 -type=normal)");
         Console.WriteLine();
         Console.WriteLine("DOS picture usage (.256 → BMP):");
@@ -849,7 +1002,7 @@ class Program
         Console.WriteLine();
         Console.WriteLine("DOS sprite usage (SPRITE.DAT + *.DAT from ./DOS):");
         Console.WriteLine("  Export all sprites to BMP:");
-        Console.WriteLine("    SwosGfx -dos -sprites-export [-sprite-bg=N] [-output=bmp] outDir");
+        Console.WriteLine("    SwosGfx -dos -sprites-export [-sprite-bg=N] [-output=bmp] [outDir]");
         Console.WriteLine("      (writes sprNNNN.bmp, 0 <= N < 1334)");
         Console.WriteLine("  Import sprites from BMP and update DAT/SPRITE.DAT:");
         Console.WriteLine("    SwosGfx -dos -sprites-import spritesDir");
@@ -858,25 +1011,24 @@ class Program
         Console.WriteLine("Common options:");
         Console.WriteLine("  -amiga                    Amiga mode (default)");
         Console.WriteLine("  -dos                      DOS mode");
+        Console.WriteLine("  -amiga-dir=<path>         Amiga directory (default: ./Amiga)");
         Console.WriteLine("  -dos-dir=<path>           DOS directory (default: ./DOS)");
-        Console.WriteLine("  -map | -tmx | -bmp        Input type (Amiga only)");
-        Console.WriteLine("  -raw320 | -raw352         RAW input or RAW format (Amiga only)");
+        Console.WriteLine("  -map | -tmx | -bmp | -raw Input type (Amiga only)");
         Console.WriteLine("  -output=bmp|tmx|map|raw   Output type");
         Console.WriteLine("  -palette=<name>           Palette (Amiga): Soft, Muddy, Frozen, Dry, Normal, Hard, Wet");
         Console.WriteLine("  -bitplanes=N              Bitplanes 1-8 (default 4; 4=16 colors, 8=256)");
         Console.WriteLine("  -no-rnc                   Disable RNC compression for Amiga MAP/RAW outputs");
         Console.WriteLine("  -pitch=N                  DOS pitch index (0..MaxPitch-1), default 0");
         Console.WriteLine("  -type=name                DOS pitch type: frozen, muddy, wet, soft, normal, dry, hard");
-        Console.WriteLine("  -colors=N                 DOS: remap to N colors");
+        Console.WriteLine("  -colors=N                 DOS: remap to N colors (16-256)");
         Console.WriteLine("  -picture                  DOS: operate on a .256 picture file");
         Console.WriteLine("  -sprites-export           DOS: export all sprites to sprNNNN.bmp files");
         Console.WriteLine("  -sprites-import           DOS: import sprNNNN.bmp files into DAT/SPRITE.DAT");
         Console.WriteLine("  -sprite-bg=N              DOS sprites: menu palette index for background color (in BMP slot 16)");
         Console.WriteLine("  -h, -?                    Show this help");
         Console.WriteLine();
-        Console.WriteLine("Bitplanes (optional, default 4):");
-        Console.WriteLine();
-        Console.WriteLine("  4 = 16 colors, 5 = 32, 6 = 64, 7 = 128, 8 = 256");
+        Console.WriteLine("Amiga raw format dimensions:");
+        Console.WriteLine("  320x256, 352x272");
         Console.WriteLine();
         Console.WriteLine("Palette export (no input/output files, writes multiple files):");
         Console.WriteLine("  SwosGfx -palettes");
@@ -888,7 +1040,7 @@ class Program
         Console.WriteLine();
     }
 
-    private static uint[] ResolvePalette(string paletteName, int bitplanes)
+    private static uint[] ResolvePalette(string paletteName, int colorCount)
     {
         if (paletteName == null)
             throw new ArgumentNullException(nameof(paletteName));
@@ -900,11 +1052,36 @@ class Program
             if (AmigaPalette.PitchPaletteNames[i].ToLowerInvariant() != key)
                 continue;
 
-            return bitplanes > 4 ? DosPalette.Pitches[i] : AmigaPalette.Pitches[i];
+            return colorCount > 16 ? DosPalette.Pitches[i] : AmigaPalette.PaletteFromAmiga12(AmigaPalette.Pitches[i]);
+        }
+
+        if (String.Equals(key, "menu", StringComparison.OrdinalIgnoreCase))
+        {
+            return colorCount > 16 ? DosPalette.Menu : AmigaPalette.PaletteFromAmiga12(AmigaPalette.Menu);
+        }
+
+        if (String.Equals(key, "game", StringComparison.OrdinalIgnoreCase))
+        {
+            return colorCount > 16 ? DosPalette.Game : AmigaPalette.PaletteFromAmiga12(AmigaPalette.Game);
+        }
+
+        if (String.Equals(key, "titlelogo", StringComparison.OrdinalIgnoreCase))
+        {
+            return AmigaPalette.PaletteFromAmiga12(AmigaPalette.TitleLogo);
+        }
+
+        if (String.Equals(key, "titletext", StringComparison.OrdinalIgnoreCase))
+        {
+            return AmigaPalette.PaletteFromAmiga12(AmigaPalette.TitleText);
+        }
+
+        if (String.Equals(key, "titlescreen", StringComparison.OrdinalIgnoreCase))
+        {
+            return AmigaPalette.PaletteFromAmiga12(AmigaPalette.TitleScreen);
         }
 
         throw new ArgumentException(
-                    $"Unknown palette '{paletteName}'. Valid names: {String.Join(", ", AmigaPalette.PitchPaletteNames)}.");
+            $"Unknown palette '{paletteName}'. Valid names: {String.Join(", ", AmigaPalette.PitchPaletteNames)}.");
     }
 
     private static bool TryParseDosPitchType(string value, out DosPitchType type)

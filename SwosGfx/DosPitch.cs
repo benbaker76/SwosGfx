@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Text;
 using static RncProPack.RncProcessor;
 
@@ -46,14 +46,6 @@ namespace SwosGfx
         ReadOnlySpan<byte> GetPatternBytes(int pitchIndex, int patternIndex);
     }
 
-    /// <summary>
-    /// Offline pitch renderer for the DOS version.
-    /// - Composes a full 672x848 8bpp pitch from pattern data.
-    /// - Builds a pitch-type-specific palette from DosPalette.Game.
-    /// - Saves as 8bpp indexed BMP.
-    /// - Can optionally remap to N colors.
-    /// - Can export pitch as Tiled TMX + tileset BMP (16 columns of 16x16 tiles).
-    /// </summary>
     public sealed class DosPitch
     {
         public const int Width = 672;  // PITCH_W
@@ -63,7 +55,7 @@ namespace SwosGfx
         public const int Columns = 42; // 672 / 16
         public const int Rows = 55;    // 880 / 16
 
-        // Tileset layout for TMX export: 16 columns of 16x16 tiles (matches Amiga tool).
+        // Tileset layout for TMX export: 16 columns of 16x16 tiles
         private const int TilesetColumns = 16;
 
         private readonly IDosPitchPatternSource _patterns;
@@ -74,24 +66,17 @@ namespace SwosGfx
         }
 
         /// <summary>
-        /// Build the full pitch image (672x848) as 8bpp indexed pixels + palette.
-        ///
-        /// If use128Colors is true:
-        ///   - Every pixel index is masked with 0x7F (so 128..255 map to 0..127).
-        ///   - Palette entries 128..255 are forced to black.
+        /// Build the full pitch image as palette indices (top-down int[,] [y,x]) + palette (ARGB uint[]).
         /// </summary>
-        public (byte[] Pixels, Color[] Palette) BuildPitchImage(
-            int pitchIndex,
-            DosPitchType pitchType)
+        public (byte[,] Indices, uint[] Palette) BuildPitchImage(int pitchIndex, DosPitchType pitchType)
         {
             if (pitchIndex < 0 || pitchIndex >= _patterns.MaxPitch)
                 throw new ArgumentOutOfRangeException(nameof(pitchIndex));
 
-            // Build palette based on DosGamePal + pat_cols tweaks.
-            var palette = BuildPitchPalette(pitchType);
+            uint[] palette = BuildPitchPalette(pitchType);
 
-            // Compose the full pitch from 16x16 tiles.
-            var pixels = new byte[Width * Height];
+            // Top-down indices: [y,x]
+            var indices = new byte[Height, Width];
 
             int pointerCount = _patterns.GetPointerCount(pitchIndex);
 
@@ -101,57 +86,29 @@ namespace SwosGfx
                 {
                     int pointerIndex = Columns * tileY + tileX;
 
-                    // Guard against short pointer tables in case of malformed data.
+                    // Guard against short pointer tables
                     if (pointerIndex >= pointerCount)
                         continue;
 
                     int patternIndex = _patterns.GetPatternIndexForPointer(pitchIndex, pointerIndex);
-                    var pattern = _patterns.GetPatternBytes(pitchIndex, patternIndex);
+                    ReadOnlySpan<byte> pattern = _patterns.GetPatternBytes(pitchIndex, patternIndex);
 
-                    BlitPattern(pattern, pixels, tileX * PatternSize, tileY * PatternSize, Width);
+                    BlitPattern(pattern, indices, tileX * PatternSize, tileY * PatternSize);
                 }
             }
 
-            return (pixels, palette);
+            return (indices, palette);
         }
 
-        /// <summary>
-        /// Save the pitch as an 8bpp indexed BMP file.
-        /// Filename logic (pitchN-TYPE.bmp) can be done by the caller.
-        ///
-        /// If use128Colors is true:
-        ///   - Indices are masked with 0x7F.
-        ///   - Palette entries 128..255 are black.
-        /// </summary>
-        public void SavePitchAsBmp(
-            int pitchIndex,
-            DosPitchType pitchType,
-            string path,
-            int colorCount = 256)
+        public void SavePitchAsBmp(int pitchIndex, DosPitchType pitchType, string path, int colorCount = 256)
         {
             if (path == null) throw new ArgumentNullException(nameof(path));
 
-            var (pixelsTopDown, palette) = BuildPitchImage(pitchIndex, pitchType);
-            Write8bppIndexedBmp(path, Width, Height, pixelsTopDown, palette, colorCount);
+            var (indices, palette) = BuildPitchImage(pitchIndex, pitchType);
+            Write8bppIndexedBmp(path, Width, Height, indices, palette, colorCount);
         }
 
-        /// <summary>
-        /// Export the pitch as a Tiled TMX map + tileset BMP.
-        ///
-        /// - Tileset BMP is stored next to the TMX file, named &lt;baseName&gt;.bmp.
-        /// - Tiles are arranged in 16 columns of 16x16 pixels.
-        /// - Tileset is built from unique pattern indices actually used by the map.
-        /// - TMX refers to tiles by GID (pattern-based), with GID=0 meaning empty.
-        ///
-        /// If use128Colors is true:
-        ///   - Tile pixel indices are masked with 0x7F.
-        ///   - Palette entries 128..255 are black.
-        /// </summary>
-        public void SavePitchAsTmx(
-            int pitchIndex,
-            DosPitchType pitchType,
-            string path,
-            int colorCount = 256)
+        public void SavePitchAsTmx(int pitchIndex, DosPitchType pitchType, string path, int colorCount = 256)
         {
             if (path == null) throw new ArgumentNullException(nameof(path));
             if (pitchIndex < 0 || pitchIndex >= _patterns.MaxPitch)
@@ -162,13 +119,12 @@ namespace SwosGfx
             string baseName = Path.GetFileNameWithoutExtension(fullTmxPath);
             string tilesBmpPath = Path.Combine(tmxDir, baseName + ".bmp");
 
-            // Build pitch-type-specific palette
-            var palette = BuildPitchPalette(pitchType);
+            uint[] palette = BuildPitchPalette(pitchType);
             int pointerCount = _patterns.GetPointerCount(pitchIndex);
 
-            // Map: patternIndex -> tileId (0-based)
-            var patternToTileId = new System.Collections.Generic.Dictionary<int, int>();
-            var tilePixels = new System.Collections.Generic.List<byte[]>(); // each is 16*16
+            // patternIndex -> tileId (0-based)
+            var patternToTileId = new Dictionary<int, int>();
+            var tilePixels = new List<byte[]>(); // each is 16*16 bytes (indices)
 
             // GID map for TMX (1-based tile IDs; 0 = empty)
             int[,] gidMap = new int[Rows, Columns];
@@ -181,7 +137,7 @@ namespace SwosGfx
 
                     if (pointerIndex >= pointerCount)
                     {
-                        gidMap[tileY, tileX] = 0; // empty tile
+                        gidMap[tileY, tileX] = 0;
                         continue;
                     }
 
@@ -189,24 +145,19 @@ namespace SwosGfx
 
                     if (!patternToTileId.TryGetValue(patternIndex, out int tileId))
                     {
-                        var pattern = _patterns.GetPatternBytes(pitchIndex, patternIndex);
+                        ReadOnlySpan<byte> pattern = _patterns.GetPatternBytes(pitchIndex, patternIndex);
                         if (pattern.Length != PatternSize * PatternSize)
                             throw new InvalidOperationException("Pattern must be 16x16 (256 bytes).");
 
                         var tileData = new byte[PatternSize * PatternSize];
-
-                        for (int i = 0; i < tileData.Length; i++)
-                        {
-                            byte idx = pattern[i];
-                            tileData[i] = idx;
-                        }
+                        pattern.CopyTo(tileData);
 
                         tileId = tilePixels.Count;
                         tilePixels.Add(tileData);
                         patternToTileId[patternIndex] = tileId;
                     }
 
-                    gidMap[tileY, tileX] = tileId + 1; // TMX GID is 1-based
+                    gidMap[tileY, tileX] = tileId + 1;
                 }
             }
 
@@ -216,12 +167,12 @@ namespace SwosGfx
             int tilesetWidth = TilesetColumns * PatternSize;
             int tilesetHeight = tilesetRows * PatternSize;
 
-            var tilesetImagePixels = new byte[tilesetWidth * tilesetHeight]; // top-down
+            // Top-down tileset indices: [y,x]
+            var tilesetIndices = new byte[tilesetHeight, tilesetWidth];
 
-            // Blit each tile into tileset image
             for (int tileId = 0; tileId < tileCount; tileId++)
             {
-                var tileData = tilePixels[tileId];
+                byte[] tileData = tilePixels[tileId];
                 int col = tileId % TilesetColumns;
                 int row = tileId / TilesetColumns;
 
@@ -233,23 +184,16 @@ namespace SwosGfx
                     for (int x = 0; x < PatternSize; x++)
                     {
                         int srcIndex = y * PatternSize + x;
-                        byte idx = tileData[srcIndex];
-
-                        int dstX = dstX0 + x;
-                        int dstY = dstY0 + y;
-                        int dstIndex = dstY * tilesetWidth + dstX;
-
-                        tilesetImagePixels[dstIndex] = idx;
+                        tilesetIndices[dstY0 + y, dstX0 + x] = tileData[srcIndex];
                     }
                 }
             }
 
             // Write tileset BMP
-            Write8bppIndexedBmp(tilesBmpPath, tilesetWidth, tilesetHeight, tilesetImagePixels, palette, colorCount);
+            Write8bppIndexedBmp(tilesBmpPath, tilesetWidth, tilesetHeight, tilesetIndices, palette, colorCount);
 
             // Write TMX
             var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-
             Directory.CreateDirectory(tmxDir);
 
             using var writer = new StreamWriter(fullTmxPath, false, encoding);
@@ -271,10 +215,8 @@ namespace SwosGfx
                     bool lastCell = (y == Rows - 1) && (x == Columns - 1);
 
                     writer.Write(gid);
-                    if (!lastCell)
-                        writer.Write(",");
-                    if (x == Columns - 1)
-                        writer.WriteLine();
+                    if (!lastCell) writer.Write(",");
+                    if (x == Columns - 1) writer.WriteLine();
                 }
             }
 
@@ -287,178 +229,83 @@ namespace SwosGfx
         // Internal helpers
         // ---------------------------------------------------------------------
 
-        private static void BlitPattern(
-            ReadOnlySpan<byte> pattern,
-            byte[] dest,
-            int destX,
-            int destY,
-            int destPitch)
+        private static void BlitPattern(ReadOnlySpan<byte> pattern, byte[,] destIndices, int destX, int destY)
         {
             if (pattern.Length != PatternSize * PatternSize)
                 throw new ArgumentException("Pattern must be 16x16 (256 bytes).", nameof(pattern));
 
-            int destBase = destY * destPitch + destX;
-
             for (int y = 0; y < PatternSize; y++)
             {
                 int srcOffset = y * PatternSize;
-                int dstOffset = destBase + y * destPitch;
+                int dy = destY + y;
 
                 for (int x = 0; x < PatternSize; x++)
                 {
-                    byte idx = pattern[srcOffset + x];
-                    dest[dstOffset + x] = idx;
+                    int dx = destX + x;
+                    destIndices[dy, dx] = pattern[srcOffset + x];
                 }
             }
-        }
-
-        public static double GetColorDistance(Color color1, Color color2)
-        {
-            double minDistance = double.MaxValue;
-
-            CIELab labColor = Lab.RGBtoLab(color1.R, color1.G, color1.B);
-            CIELab paletteLabColor = Lab.RGBtoLab(color2.R, color2.G, color2.B);
-
-            double distance = Lab.GetDeltaE_CIEDE2000(labColor, paletteLabColor);
-
-            if (distance == 0)
-                return 0;
-
-            if (distance < minDistance)
-                minDistance = distance;
-
-            return minDistance;
-        }
-
-        public static double GetNearestColor(Color color, Color[] palette, out int nearestIndex)
-        {
-            double minDistance = double.MaxValue;
-            nearestIndex = -1;
-
-            for (int i = 0; i < palette.Length; i++)
-            {
-                Color paletteColor = palette[i];
-                
-                double distance = GetColorDistance(color, paletteColor);
-
-                if (distance < minDistance)
-                {
-                    minDistance = distance;
-                    nearestIndex = i;
-                }
-            }
-
-            return minDistance;
-        }
-
-        private static void QuantizeBmp(
-            ref byte[] pixelsTopDown,
-            ref Color[] palette,
-            int colorCount)
-        {
-            if (palette == null)
-                throw new ArgumentNullException(nameof(palette));
-            if (pixelsTopDown == null)
-                throw new ArgumentNullException(nameof(pixelsTopDown));
-            if (colorCount <= 0 || colorCount > palette.Length)
-                throw new ArgumentOutOfRangeException(nameof(colorCount),
-                    $"colorCount must be between 1 and {palette.Length}, got {colorCount}.");
-
-            // New palette = first N colors
-            Color[] newPalette = palette.Take(colorCount).ToArray();
-
-            var colorMap = new Dictionary<byte, byte>();
-
-            // Build mapping from "old" indices -> nearest index in newPalette
-            for (int i = colorCount; i < palette.Length; i++)
-            {
-                Color color = palette[i];
-
-                double distance = GetNearestColor(color, newPalette, out int nearestIndex);
-
-                if (nearestIndex < 0)
-                    throw new InvalidOperationException(
-                        $"Nearest color not found for palette index {i}.");
-
-                colorMap[(byte)i] = (byte)nearestIndex;
-            }
-
-            // Remap pixels
-            for (int i = 0; i < pixelsTopDown.Length; i++)
-            {
-                byte idx = pixelsTopDown[i];
-
-                if (idx >= palette.Length)
-                {
-                    throw new InvalidDataException(
-                        $"Pixel index {idx} at position {i} is outside palette length {palette.Length}.");
-                }
-
-                if (idx < colorCount)
-                    continue;
-
-                if (!colorMap.TryGetValue(idx, out byte mapped))
-                {
-                    throw new InvalidDataException(
-                        $"No remap entry for palette index {idx}. colorCount={colorCount}, paletteLength={palette.Length}.");
-                }
-
-                pixelsTopDown[i] = mapped;
-            }
-
-            // Shrink palette
-            palette = newPalette;
         }
 
         /// <summary>
-        /// Write an 8bpp indexed BMP from top-down pixels and a 256-entry palette.
-        /// Assumes the row width is already DWORD-aligned (which it is for pitch and tileset).
+        /// Write an 8bpp indexed BMP from top-down indices [y,x] and an ARGB palette (uint[]).
         /// </summary>
         private static void Write8bppIndexedBmp(
             string path,
             int width,
             int height,
-            byte[] pixelsTopDown,
-            Color[] palette,
+            byte[,] indices,
+            uint[] palette,
             int colorCount)
         {
             if (path == null) throw new ArgumentNullException(nameof(path));
-            if (pixelsTopDown == null) throw new ArgumentNullException(nameof(pixelsTopDown));
+            if (indices == null) throw new ArgumentNullException(nameof(indices));
             if (palette == null) throw new ArgumentNullException(nameof(palette));
-            if (palette.Length < 256) throw new ArgumentException("Palette must have at least 256 colors.", nameof(palette));
-            if (pixelsTopDown.Length != width * height)
-                throw new ArgumentException("pixelsTopDown length does not match width*height.", nameof(pixelsTopDown));
+            if (indices.GetLength(0) != height || indices.GetLength(1) != width)
+                throw new ArgumentException("indices dimensions do not match width/height.", nameof(indices));
+            if (palette.Length < 256)
+                throw new ArgumentException("Palette must have at least 256 entries (ARGB).", nameof(palette));
 
-            QuantizeBmp(ref pixelsTopDown, ref palette, colorCount);
+            AmigaPalette.QuantizeBmp(ref indices, ref palette, colorCount);
 
-            // BMP is stored bottom-up; flip vertically.
-            var flipped = new byte[pixelsTopDown.Length];
+            // BMP rows are padded to 4 bytes.
+            int stride = (width + 3) & ~3;
+            int pixelBytes = stride * height;
+
+            // Build bottom-up byte buffer.
+            var pixelData = new byte[pixelBytes];
+
             for (int y = 0; y < height; y++)
             {
-                int srcRow = (height - 1 - y) * width;
-                int dstRow = y * width;
-                Buffer.BlockCopy(pixelsTopDown, srcRow, flipped, dstRow, width);
+                int srcY = height - 1 - y;       // bottom-up
+                int dstRow = y * stride;
+
+                for (int x = 0; x < width; x++)
+                {
+                    int idx = indices[srcY, x];
+                    if ((uint)idx > 255u)
+                        throw new InvalidDataException($"Pixel index {idx} at ({x},{srcY}) is not in 0..255.");
+
+                    pixelData[dstRow + x] = (byte)idx;
+                }
+
+                // padding bytes already zero
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".");
 
-            using var fs = File.Create(path);
+            using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
             using var bw = new BinaryWriter(fs);
 
             // --- BITMAPFILEHEADER (14 bytes) ---
-            // WORD bfType = 'BM'
-            bw.Write((ushort)0x4D42);
+            bw.Write((ushort)0x4D42); // 'BM'
 
-            int headerSize = 14 + 40 + 256 * 4; // file header + info header + palette
-            int pixelBytes = width * height;    // 8bpp, width is multiple of 4
+            int headerSize = 14 + 40 + 256 * 4;
             int fileSize = headerSize + pixelBytes;
 
-            // DWORD bfSize
             bw.Write(fileSize);
-            // WORD bfReserved1, bfReserved2
             bw.Write((ushort)0);
             bw.Write((ushort)0);
-            // DWORD bfOffBits
             bw.Write(headerSize);
 
             // --- BITMAPINFOHEADER (40 bytes) ---
@@ -466,109 +313,67 @@ namespace SwosGfx
             bw.Write(width);              // biWidth
             bw.Write(height);             // biHeight (positive -> bottom-up)
             bw.Write((ushort)1);          // biPlanes
-            bw.Write((ushort)8);          // biBitCount (8bpp indexed)
+            bw.Write((ushort)8);          // biBitCount
             bw.Write(0);                  // biCompression = BI_RGB
-            bw.Write(pixelBytes);         // biSizeImage
+            bw.Write(pixelBytes);         // biSizeImage (including padding)
             bw.Write(0);                  // biXPelsPerMeter
             bw.Write(0);                  // biYPelsPerMeter
-            bw.Write(0);                  // biClrUsed
+            bw.Write(256);                // biClrUsed (keep 256-entry table)
             bw.Write(0);                  // biClrImportant
 
-            // --- Color table (256 * 4 bytes, BGR0) ---
+            // --- Color table: 256 x (B,G,R,0) ---
+            const uint FallbackMagenta = 0xFFFF00FF;
+
             for (int i = 0; i < 256; i++)
             {
-                var c = i < palette.Length ? palette[i] : Color.Magenta;
-                bw.Write(c.B);
-                bw.Write(c.G);
-                bw.Write(c.R);
-                bw.Write((byte)0); // reserved
+                uint argb = (i < palette.Length) ? palette[i] : FallbackMagenta;
+                AmigaPalette.UnpackRgb(argb, out byte r, out byte g, out byte b);
+
+                bw.Write(b);
+                bw.Write(g);
+                bw.Write(r);
+                bw.Write((byte)0);
             }
 
             // --- Pixel data ---
-            bw.Write(flipped);
+            bw.Write(pixelData);
         }
 
-        // === Pitch palette handling (SetPitchPalette equivalent) =============
+        // === Pitch palette handling =========================================
 
-        // pat_cols[pitchType][COLOR_TABLE_SIZE]
-        // 9 packed RGB values (0xRRGGBB) per pitch type.
         private static readonly uint[,] PatCols =
         {
-            // Frozen
-            {
-                0x484830, 0x404830, 0x384830, 0x5E5E50, 0x4D4D42,
-                0x1F1F1A, 0x2D2D27, 0x443B2B, 0x504E45
-            },
-            // Muddy
-            {
-                0x382800, 0x302800, 0x282800, 0x645D53, 0x583D00,
-                0x221600, 0x2F1D00, 0x2A1E04, 0x5C4E3D
-            },
-            // Wet
-            {
-                0x184800, 0x384800, 0x184800, 0x5C6150, 0x425718,
-                0x1E2D00, 0x243700, 0x333E00, 0x5A5B4B
-            },
-            // Soft
-            {
-                0x183800, 0x383800, 0x183800, 0x5B614C, 0x2B4B12,
-                0x172300, 0x1E2D00, 0x2F2D00, 0x525240
-            },
-            // Normal
-            {
-                0x384800, 0x304800, 0x484800, 0x5A604C, 0x405517,
-                0x1E2D00, 0x253700, 0x3E4001, 0x605C44
-            },
-            // Dry
-            {
-                0x484800, 0x404800, 0x384800, 0x595C4B, 0x435918,
-                0x1E2D00, 0x243700, 0x433C00, 0x5E5245
-            },
-            // Hard
-            {
-                0x483800, 0x403800, 0x383800, 0x645D4A, 0x5A4500,
-                0x271E00, 0x342700, 0x283200, 0x584D38
-            }
+            { 0x484830, 0x404830, 0x384830, 0x5E5E50, 0x4D4D42, 0x1F1F1A, 0x2D2D27, 0x443B2B, 0x504E45 }, // Frozen
+            { 0x382800, 0x302800, 0x282800, 0x645D53, 0x583D00, 0x221600, 0x2F1D00, 0x2A1E04, 0x5C4E3D }, // Muddy
+            { 0x184800, 0x384800, 0x184800, 0x5C6150, 0x425718, 0x1E2D00, 0x243700, 0x333E00, 0x5A5B4B }, // Wet
+            { 0x183800, 0x383800, 0x183800, 0x5B614C, 0x2B4B12, 0x172300, 0x1E2D00, 0x2F2D00, 0x525240 }, // Soft
+            { 0x384800, 0x304800, 0x484800, 0x5A604C, 0x405517, 0x1E2D00, 0x253700, 0x3E4001, 0x605C44 }, // Normal
+            { 0x484800, 0x404800, 0x384800, 0x595C4B, 0x435918, 0x1E2D00, 0x243700, 0x433C00, 0x5E5245 }, // Dry
+            { 0x483800, 0x403800, 0x383800, 0x645D4A, 0x5A4500, 0x271E00, 0x342700, 0x283200, 0x584D38 }  // Hard
         };
 
-        // Indices of palette entries that change with pitch type.
-        // Same as "where[]" table in original C.
-        public static readonly byte[] PaletteIndicesToChange =
-        {
-            0, 7, 9, 78, 79, 80, 81, 106, 107
-        };
+        public static readonly byte[] PaletteIndicesToChange = { 0, 7, 9, 78, 79, 80, 81, 106, 107 };
 
         /// <summary>
-        /// Build a pitch palette for given pitch type, starting from SwosPalettes.DosGamePal.
+        /// Build a pitch palette for the given pitch type, starting from DosPalette.Game (ARGB uint[256]).
         /// </summary>
-        public static Color[] BuildPitchPalette(
-            DosPitchType pitchType)
+        public static uint[] BuildPitchPalette(DosPitchType pitchType)
         {
-            // Start from base game palette (ARGB uints)
             var basePal = DosPalette.Game;
             if (basePal == null || basePal.Length != 256)
-                throw new InvalidOperationException("SwosPalettes.DosGamePal must contain 256 entries.");
+                throw new InvalidOperationException("DosPalette.Game must contain 256 entries.");
 
-            var palette = new Color[256];
-            for (int i = 0; i < 256; i++)
-            {
-                uint argb = basePal[i];
-                byte a = (byte)((argb >> 24) & 0xFF);
-                byte r = (byte)((argb >> 16) & 0xFF);
-                byte g = (byte)((argb >> 8) & 0xFF);
-                byte b = (byte)(argb & 0xFF);
-                palette[i] = Color.FromArgb(a, r, g, b);
-            }
+            var palette = new uint[256];
+            Array.Copy(basePal, palette, 256);
 
             int typeIndex = (int)pitchType;
             if (typeIndex < 0 || typeIndex >= PatCols.GetLength(0))
                 throw new ArgumentOutOfRangeException(nameof(pitchType));
 
-            // Apply pat_cols tweaks to specific palette indices.
             for (int i = 0; i < PaletteIndicesToChange.Length; i++)
             {
                 int palIndex = PaletteIndicesToChange[i];
-                uint packed = PatCols[typeIndex, i]; // 0xRRGGBB in 0..100 range
+                uint packed = PatCols[typeIndex, i]; // 0xRRGGBB
 
                 int r = (int)((packed >> 16) & 0xFF);
                 int g = (int)((packed >> 8) & 0xFF);
@@ -583,7 +388,7 @@ namespace SwosGfx
                 g = Math.Clamp(g, 0, 255);
                 b = Math.Clamp(b, 0, 255);
 
-                palette[palIndex] = Color.FromArgb(255, r, g, b);
+                palette[palIndex] = AmigaPalette.PackArgb(0xFF, (byte)r, (byte)g, (byte)b);
             }
 
             return palette;

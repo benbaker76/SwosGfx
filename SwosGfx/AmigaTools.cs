@@ -3,15 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Xml.Linq;
+using static SwosGfx.AmigaPalette;
 
 namespace SwosGfx
 {
-    public enum RawFormat
-    {
-        Raw320x256,   // CJCBITS.RAW / CJCGRAFS.RAW etc.
-        Raw352x272    // LOADER1.RAW-style (DC_MakeAmigaRaw_New)
-    }
-
     public sealed class AmigaTools
     {
         // Pitch constants
@@ -145,8 +140,8 @@ namespace SwosGfx
             public static byte[,] Read8bppBmpToIndices(
                 string path,
                 out uint[] paletteArgb,
-                int? expectedWidth = null,
-                int? expectedHeight = null)
+                out int width,
+                out int height)
             {
                 using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
                 using var br = new BinaryReader(fs);
@@ -166,8 +161,8 @@ namespace SwosGfx
                 if (infoSize < InfoHeaderSize)
                     throw new InvalidDataException("Unsupported BMP info header size.");
 
-                int width = br.ReadInt32();
-                int height = br.ReadInt32();
+                width = br.ReadInt32();
+                height = br.ReadInt32();
                 ushort planes = br.ReadUInt16();
                 ushort bitCount = br.ReadUInt16();
                 uint compression = br.ReadUInt32();
@@ -187,11 +182,6 @@ namespace SwosGfx
                 bool bottomUp = height > 0;
                 if (!bottomUp)
                     throw new InvalidDataException("Top-down BMPs (negative height) are not supported here.");
-
-                if (expectedWidth.HasValue && width != expectedWidth.Value)
-                    throw new InvalidDataException($"BMP width must be {expectedWidth.Value}, got {width}.");
-                if (expectedHeight.HasValue && height != expectedHeight.Value)
-                    throw new InvalidDataException($"BMP height must be {expectedHeight.Value}, got {height}.");
 
                 int heightAbs = height;
                 int bitsPerPixel = bitCount;
@@ -271,10 +261,17 @@ namespace SwosGfx
             public static void Write8bppBmpFromIndices(
                 string path,
                 byte[,] indices,
-                uint[] paletteArgb)
+                uint[] palette,
+                uint[]? newPalette = null,
+                int colorCount = 16)
             {
                 if (indices == null) throw new ArgumentNullException(nameof(indices));
-                if (paletteArgb == null) throw new ArgumentNullException(nameof(paletteArgb));
+                if (palette == null) throw new ArgumentNullException(nameof(palette));
+
+                if (newPalette != null)
+                    AmigaPalette.QuantizeBmp(ref indices, ref palette, newPalette);
+                else
+                    AmigaPalette.QuantizeBmp(ref indices, ref palette, colorCount);
 
                 int height = indices.GetLength(0);
                 int width = indices.GetLength(1);
@@ -313,7 +310,7 @@ namespace SwosGfx
                 // Palette (BGRA)
                 for (int i = 0; i < PaletteEntries; i++)
                 {
-                    uint argb = i < paletteArgb.Length ? paletteArgb[i] : 0;
+                    uint argb = i < palette.Length ? palette[i] : 0;
                     byte r = (byte)((argb >> 16) & 0xFF);
                     byte g = (byte)((argb >> 8) & 0xFF);
                     byte b = (byte)(argb & 0xFF);
@@ -347,10 +344,10 @@ namespace SwosGfx
         private static byte[,] LoadIndexedImageIndices(
             string path,
             out uint[] palette,
-            int? expectedWidth = null,
-            int? expectedHeight = null)
+            out int width,
+            out int height)
         {
-            return Bmp8Helper.Read8bppBmpToIndices(path, out palette, expectedWidth, expectedHeight);
+            return Bmp8Helper.Read8bppBmpToIndices(path, out palette, out width, out height);
         }
 
         // ------------------------------------------------------------------
@@ -575,13 +572,15 @@ namespace SwosGfx
             string mapFilePath,
             uint[]? overridePalette,
             string outputBmpPath,
-            int bitplanes = 4)
+            uint[]? newPalette = null,
+            int bitplanes = 4,
+            int colorCount = 16)
         {
             // 1) Read mapping + sprites from MAP (RNC-aware, variable bitplanes)
             ReadPitchMap(mapFilePath, bitplanes, out var mapping, out var sprites);
 
             // 2) Palette: override or default
-            uint[] palette = overridePalette ?? (bitplanes > 4 ? DosPalette.Game : AmigaPalette.Game);
+            uint[] palette = overridePalette ?? (bitplanes > 4 ? DosPalette.Game : AmigaPalette.PaletteFromAmiga12(AmigaPalette.Game));
 
             // 3) Build full pitch index buffer
             var fullIndices = new byte[PitchHeight, PitchWidth];
@@ -615,7 +614,7 @@ namespace SwosGfx
             }
 
             // 4) Write indexed BMP from indices + palette
-            Bmp8Helper.Write8bppBmpFromIndices(outputBmpPath, fullIndices, palette);
+            Bmp8Helper.Write8bppBmpFromIndices(outputBmpPath, fullIndices, palette, newPalette, colorCount);
         }
 
         // ------------------------------------------------------------------
@@ -637,7 +636,9 @@ namespace SwosGfx
             string mapFilePath,
             uint[] palette,
             string dstTmxPath,
-            int bitplanes = 4)
+            uint[]? newPalette = null,
+            int bitplanes = 4,
+            int colorCount = 16)
         {
             // 1) Read mapping + sprites from MAP
             ReadPitchMap(mapFilePath, bitplanes, out var mapping, out var sprites);
@@ -676,7 +677,7 @@ namespace SwosGfx
             string tilesBmpPath = Path.Combine(tmxDir, baseName + ".bmp");
 
             // 3) Write tiles BMP
-            Bmp8Helper.Write8bppBmpFromIndices(tilesBmpPath, tilesetIndices, palette);
+            Bmp8Helper.Write8bppBmpFromIndices(tilesBmpPath, tilesetIndices, palette, newPalette, colorCount);
 
             // 4) Write TMX
             int tileCols = PitchTilesX;
@@ -808,8 +809,11 @@ namespace SwosGfx
             byte[,] tsIndices = LoadIndexedImageIndices(
                 tilesBmpPath,
                 out tsPal,
-                expectedWidth: imageWidth,
-                expectedHeight: imageHeight);
+                out int tsWidth,
+                out int tsheight);
+
+            if (tsWidth != imageWidth || tsheight != imageHeight)
+                throw new InvalidOperationException("TMX: tileset image dimensions do not match <image> attributes.");
 
             int tileSheetCols = columns;
             int tileSheetRows = imageHeight / TileSize;
@@ -891,8 +895,8 @@ namespace SwosGfx
             byte[,] indexBuffer = LoadIndexedImageIndices(
                 fullPitchBmpPath,
                 out imgPal,
-                expectedWidth: PitchWidth,
-                expectedHeight: PitchHeight);
+                out int imgWidth,
+                out int imgHeight);
 
             // 2) Slice into tile matrix (55 x 42 tiles of 16x16)
             var tileMatrix = new PitchBitmapItem[PitchTilesY, PitchTilesX];
@@ -935,33 +939,25 @@ namespace SwosGfx
             string inputBmpPath,
             uint[] palette,
             string outputRawPath,
-            RawFormat format,
             int bitplanes = 4)
         {
             if (bitplanes < 1 || bitplanes > 8)
                 throw new ArgumentOutOfRangeException(nameof(bitplanes), "Bitplanes must be between 1 and 8.");
 
-            (int width, int height) = format switch
-            {
-                RawFormat.Raw320x256 => (320, 256),
-                RawFormat.Raw352x272 => (352, 272),
-                _ => throw new ArgumentOutOfRangeException(nameof(format))
-            };
-
             uint[] imgPal;
             byte[,] buffer = LoadIndexedImageIndices(
                 inputBmpPath,
                 out imgPal,
-                expectedWidth: width,
-                expectedHeight: height);
+                out int imgWidth,
+                out int imgHeight);
 
-            int bytesPerPlanePerRow = width / 8;
+            int bytesPerPlanePerRow = imgWidth / 8;
             int maxIndex = (1 << bitplanes) - 1;
 
             using var ms = new MemoryStream();
             using var bw = new BinaryWriter(ms);
 
-            for (int y = 0; y < height; y++)
+            for (int y = 0; y < imgHeight; y++)
             {
                 for (int plane = 0; plane < bitplanes; plane++)
                 {
@@ -1005,24 +1001,21 @@ namespace SwosGfx
             string inputRawPath,
             uint[] palette,
             string outputBmpPath,
-            RawFormat format,
-            int bitplanes = 4)
+            uint[]? newPalette = null,
+            int bitplanes = 4,
+            int colorCount = 16)
         {
             if (bitplanes < 1 || bitplanes > 8)
                 throw new ArgumentOutOfRangeException(nameof(bitplanes), "Bitplanes must be between 1 and 8.");
 
-            (int width, int height) = format switch
-            {
-                RawFormat.Raw320x256 => (320, 256),
-                RawFormat.Raw352x272 => (352, 272),
-                _ => throw new ArgumentOutOfRangeException(nameof(format))
-            };
+            byte[] raw = AmigaRncHelper.ReadAllBytes(inputRawPath);
+
+            (int width, int height) = DetectRawDimensions(raw.Length, bitplanes);
 
             int bytesPerPlanePerRow = width / 8;
             int bytesPerRow = bytesPerPlanePerRow * bitplanes;
             int expectedLength = bytesPerRow * height;
 
-            byte[] raw = AmigaRncHelper.ReadAllBytes(inputRawPath);
             if (raw.Length < expectedLength)
                 throw new InvalidOperationException(
                     $"RAW file too small. Expected at least {expectedLength} bytes, got {raw.Length}.");
@@ -1054,7 +1047,52 @@ namespace SwosGfx
                 }
             }
 
-            Bmp8Helper.Write8bppBmpFromIndices(outputBmpPath, buffer, palette);
+            Bmp8Helper.Write8bppBmpFromIndices(outputBmpPath, buffer, palette, newPalette, colorCount);
+        }
+
+        static (int width, int height) DetectRawDimensions(int byteCount, int bitplanes)
+        {
+            if (byteCount < 0) throw new ArgumentOutOfRangeException(nameof(byteCount));
+            if (bitplanes <= 0) throw new ArgumentOutOfRangeException(nameof(bitplanes));
+
+            // Supported raw formats
+            Span<(int w, int h)> candidates = stackalloc (int w, int h)[]
+            {
+                (320, 256),
+                (352, 272),
+            };
+
+            (int w, int h)? match = null;
+
+            foreach (var (w, h) in candidates)
+            {
+                if ((w & 7) != 0)
+                    continue; // sanity: must be divisible by 8 for planar bytes-per-row
+
+                long bytesPerPlanePerRow = w / 8;
+                long bytesPerRow = bytesPerPlanePerRow * bitplanes;
+                long expectedLength = bytesPerRow * h;
+
+                if (expectedLength == byteCount)
+                {
+                    if (match != null)
+                        throw new InvalidOperationException(
+                            $"Ambiguous raw size: {byteCount} bytes matches multiple candidate dimensions for {bitplanes} bitplanes.");
+
+                    match = (w, h);
+                }
+            }
+
+            if (match != null)
+                return match.Value;
+
+            // Build a useful error message (shows what would have matched)
+            long exp320 = ((320L / 8) * bitplanes) * 256L;
+            long exp352 = ((352L / 8) * bitplanes) * 272L;
+
+            throw new InvalidOperationException(
+                $"Unknown raw format: {byteCount} bytes with {bitplanes} bitplanes. " +
+                $"Expected {exp320} bytes for 320x256, or {exp352} bytes for 352x272.");
         }
     }
 }

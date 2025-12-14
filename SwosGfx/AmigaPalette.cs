@@ -39,19 +39,43 @@ namespace SwosGfx
             "Hard"
         };
 
-        public static readonly ushort[] Menu12 =
+        public static readonly ushort[] Menu =
         {
             0x0001, 0x0AAB, 0x0FFF, 0x0102, 0x0621, 0x0A40, 0x0F71, 0x0667,
             0x0204, 0x0445, 0x0F00, 0x000F, 0x0702, 0x088F, 0x0380, 0x0FF0
         };
 
-        public static readonly ushort[] Game12 =
+        public static readonly ushort[] Game =
         {
             0x0360, 0x0999, 0x0FFF, 0x0000, 0x0721, 0x0A40, 0x0F71, 0x0250,
             0x0030, 0x0370, 0x0F00, 0x000F, 0x0702, 0x088F, 0x0380, 0x0FF0
         };
 
-        public static readonly ushort[][] Pitches12 =
+        public static readonly ushort[] TitleLogo =
+        {
+            0x0002, 0x0A02, 0x0FB2, 0x0333, 0x043A, 0x0082, 0x0CCC, 0x0888,
+            0x0555, 0x0FF9, 0x0DD8, 0x0BB7, 0x0996, 0x0774, 0x0553, 0x0332
+        };
+
+        public static readonly ushort[] TitleText =
+        {
+            0x0002, 0x0F04, 0x0F04, 0x0004, 0x0F04, 0x0F04, 0x0F04, 0x0F04,
+            0x0006, 0x0FF9, 0x0DD8, 0x0BB7, 0x0996, 0x0774, 0x0553, 0x0332
+        };
+
+        public static readonly ushort[] TitleScreen =
+        {
+            0x0002 ,0x0002, 0x0222, 0x0444, 0x0777, 0x0999, 0x0CCC, 0x0EEE,
+            0x003A, 0x008C, 0x0EC3, 0x0802, 0x0A02, 0x0D02, 0x0062, 0x0FFF
+        };
+
+        public static readonly ushort[] Panic =
+{
+            0x0000 ,0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+            0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x00FF
+        };
+
+        public static readonly ushort[][] Pitches =
         {
             // Frozen
             new ushort[]
@@ -94,64 +118,6 @@ namespace SwosGfx
             {
                 0x0970, 0x0999, 0x0FFF, 0x0000, 0x0721, 0x0A40, 0x0F71, 0x0870,
                 0x0030, 0x0770, 0x0F00, 0x000F, 0x0702, 0x088F, 0x0380, 0x0FF0
-            }
-        };
-
-        public static readonly uint[] Menu =
-        {
-            0xFF000010, 0xFFA0A0B0, 0xFFF0F0F0, 0xFF100020, 0xFF602010, 0xFFA04000, 0xFFF07010, 0xFF606070,
-            0xFF200040, 0xFF404050, 0xFFF00000, 0xFF0000F0, 0xFF700020, 0xFF8080F0, 0xFF308000, 0xFFF0F000
-        };
-
-        public static readonly uint[] Game =
-        {
-            0xFF306000, 0xFF909090, 0xFFF0F0F0, 0xFF000000, 0xFF702010, 0xFFA04000, 0xFFF07010, 0xFF205000,
-            0xFF003000, 0xFF307000, 0xFFF00000, 0xFF0000F0, 0xFF700020, 0xFF8080F0, 0xFF308000, 0xFFF0F000
-        };
-
-        public static readonly uint[][] Pitches =
-        {
-            // Frozen
-            new uint[]
-            {
-                0xFF909060, 0xFF909090, 0xFFF0F0F0, 0xFF000000, 0xFF702010, 0xFFA04000, 0xFFF07010, 0xFF809060,
-                0xFF003000, 0xFF709060, 0xFFF00000, 0xFF0000F0, 0xFF700020, 0xFF8080F0, 0xFF308000, 0xFFF0F000
-            },
-            // Muddy
-            new uint[]
-            {
-                0xFF705000, 0xFF909090, 0xFFF0F0F0, 0xFF000000, 0xFF702010, 0xFFA04000, 0xFFF07010, 0xFF605000,
-                0xFF003000, 0xFF505000, 0xFFF00000, 0xFF0000F0, 0xFF700020, 0xFF8080F0, 0xFF308000, 0xFFF0F000
-            },
-            // Wet
-            new uint[]
-            {
-                0xFF309000, 0xFF909090, 0xFFF0F0F0, 0xFF000000, 0xFF702010, 0xFFA04000, 0xFFF07010, 0xFF709000,
-                0xFF003000, 0xFF309000, 0xFFF00000, 0xFF0000F0, 0xFF700020, 0xFF8080F0, 0xFF308000, 0xFFF0F000
-            },
-            // Soft
-            new uint[]
-            {
-                0xFF307000, 0xFF909090, 0xFFF0F0F0, 0xFF000000, 0xFF702010, 0xFFA04000, 0xFFF07010, 0xFF707000,
-                0xFF003000, 0xFF307000, 0xFFF00000, 0xFF0000F0, 0xFF700020, 0xFF8080F0, 0xFF308000, 0xFFF0F000
-            },
-            // Normal
-            new uint[]
-            {
-                0xFF709000, 0xFF909090, 0xFFF0F0F0, 0xFF000000, 0xFF702010, 0xFFA04000, 0xFFF07010, 0xFF609000,
-                0xFF003000, 0xFF909000, 0xFFF00000, 0xFF0000F0, 0xFF700020, 0xFF8080F0, 0xFF308000, 0xFFF0F000
-            },
-            // Dry
-            new uint[]
-            {
-                0xFF909000, 0xFF909090, 0xFFF0F0F0, 0xFF000000, 0xFF702010, 0xFFA04000, 0xFFF07010, 0xFF809000,
-                0xFF003000, 0xFF709000, 0xFFF00000, 0xFF0000F0, 0xFF700020, 0xFF8080F0, 0xFF308000, 0xFFF0F000
-            },
-            // Hard
-            new uint[]
-            {
-                0xFF907000, 0xFF909090, 0xFFF0F0F0, 0xFF000000, 0xFF702010, 0xFFA04000, 0xFFF07010, 0xFF807000,
-                0xFF003000, 0xFF707000, 0xFFF00000, 0xFF0000F0, 0xFF700020, 0xFF8080F0, 0xFF308000, 0xFFF0F000
             }
         };
 
@@ -220,7 +186,8 @@ namespace SwosGfx
         // comma comes *before* the newline.
         public static string PaletteToHex(
             ushort[] amigaPalette,
-            string prefix = "$")
+            string prefix = "$",
+            bool eolComma = true)
         {
             if (amigaPalette == null)
                 throw new ArgumentNullException(nameof(amigaPalette));
@@ -238,7 +205,7 @@ namespace SwosGfx
                 {
                     // End of an 8-entry block → comma then newline
                     if (i % 8 == 7)
-                        sb.AppendLine(",");
+                        sb.AppendLine(eolComma ? ",": "");
                     else
                         sb.Append(",");
                 }
@@ -253,7 +220,8 @@ namespace SwosGfx
         // comma comes *before* the newline.
         public static string PaletteToHex(
             uint[] argbPalette,
-            string prefix = "$")
+            string prefix = "$",
+            bool eolComma = true)
         {
             if (argbPalette == null)
                 throw new ArgumentNullException(nameof(argbPalette));
@@ -270,7 +238,7 @@ namespace SwosGfx
                 if (!isLast)
                 {
                     if (i % 8 == 7)
-                        sb.AppendLine(",");
+                        sb.AppendLine(eolComma ? ",": "");
                     else
                         sb.Append(",");
                 }
@@ -326,11 +294,22 @@ namespace SwosGfx
             FileFormat fileFormat)
         {
             StringBuilder sb = new StringBuilder();
+            string cHeader = $"unsigned int {name}[] = {{";
+            string cFooter = "};";
             string commentPrefix = (fileFormat == FileFormat.Asm) ? ";" : "//";
             string hexPrefix = (fileFormat == FileFormat.Asm) ? "$" : "0x";
+            string linePrefix = (fileFormat == FileFormat.Asm) ? "    dc.w " : "";
+            bool eolComma = (fileFormat != FileFormat.Asm);
 
             sb.AppendLine($"{commentPrefix} {name}");
-            sb.AppendLine(PaletteToHex(argbPalette, hexPrefix));
+
+            if (fileFormat == FileFormat.C)
+                sb.AppendLine(cHeader);
+
+            sb.AppendLine($"{linePrefix}{PaletteToHex(argbPalette, hexPrefix, eolComma)}");
+
+            if (fileFormat == FileFormat.C)
+                sb.AppendLine(cFooter);
 
             return sb.ToString();
         }
@@ -341,11 +320,22 @@ namespace SwosGfx
             FileFormat fileFormat)
         {
             StringBuilder sb = new StringBuilder();
+            string cHeader = $"unsigned short {name}[] = {{";
+            string cFooter = "};";
             string commentPrefix = (fileFormat == FileFormat.Asm) ? ";" : "//";
             string hexPrefix = (fileFormat == FileFormat.Asm) ? "$" : "0x";
+            string linePrefix = (fileFormat == FileFormat.Asm) ? "dc.w " : "";
+            bool eolComma = (fileFormat != FileFormat.Asm);
 
             sb.AppendLine($"{commentPrefix} {name}");
-            sb.AppendLine(PaletteToHex(amigaPalette, hexPrefix));
+
+            if (fileFormat == FileFormat.C)
+                sb.AppendLine(cHeader);
+
+            sb.AppendLine($"    {linePrefix}{PaletteToHex(amigaPalette, hexPrefix, eolComma)}");
+
+            if (fileFormat == FileFormat.C)
+                sb.AppendLine(cFooter);
 
             return sb.ToString();
         }
@@ -407,6 +397,147 @@ namespace SwosGfx
                     }
                 }
             }
+        }
+
+        public static void UnpackRgb(uint argb, out byte r, out byte g, out byte b)
+        {
+            r = (byte)((argb >> 16) & 0xFF);
+            g = (byte)((argb >> 8) & 0xFF);
+            b = (byte)(argb & 0xFF);
+        }
+
+        public static uint PackArgb(byte a, byte r, byte g, byte b)
+        {
+            return ((uint)a << 24) | ((uint)r << 16) | ((uint)g << 8) | b;
+        }
+
+        public static int BitplanesToColors(int bitplanes)
+        {
+            if (bitplanes < 1 || bitplanes > 8)
+                throw new ArgumentOutOfRangeException(nameof(bitplanes), "Bitplanes must be between 1 and 8.");
+            return 1 << bitplanes;
+        }
+
+        public static double GetColorDistance(uint argb1, uint argb2)
+        {
+            UnpackRgb(argb1, out byte r1, out byte g1, out byte b1);
+            UnpackRgb(argb2, out byte r2, out byte g2, out byte b2);
+
+            CIELab lab1 = Lab.RGBtoLab(r1, g1, b1);
+            CIELab lab2 = Lab.RGBtoLab(r2, g2, b2);
+
+            double d = Lab.GetDeltaE_CIEDE2000(lab1, lab2);
+            return d;
+        }
+
+        public static double GetNearestColor(uint argb, uint[] palette, out int nearestIndex)
+        {
+            double minDistance = double.MaxValue;
+            nearestIndex = -1;
+
+            for (int i = 0; i < palette.Length; i++)
+            {
+                double distance = GetColorDistance(argb, palette[i]);
+                if (distance < minDistance)
+                {
+                    minDistance = distance;
+                    nearestIndex = i;
+                }
+            }
+
+            return minDistance;
+        }
+
+        public static void QuantizeBmp(ref byte[,] indices, ref uint[] palette, uint[] newPalette)
+        {
+            if (palette == null) throw new ArgumentNullException(nameof(palette));
+            if (newPalette == null) throw new ArgumentNullException(nameof(newPalette));
+            if (indices == null) throw new ArgumentNullException(nameof(indices));
+            // Map old palette index -> nearest index in newPalette
+            var colorMap = new Dictionary<int, int>(capacity: palette.Length);
+
+            for (int i = 0; i < palette.Length; i++)
+            {
+                uint c = palette[i];
+                _ = GetNearestColor(c, newPalette, out int nearestIndex);
+                if (nearestIndex < 0)
+                    throw new InvalidOperationException($"Nearest color not found for palette index {i}.");
+                colorMap[i] = nearestIndex;
+            }
+            int h = indices.GetLength(0);
+            int w = indices.GetLength(1);
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 0; x < w; x++)
+                {
+                    int idx = indices[y, x];
+                    // Skip transparent
+                    if (idx == 0)
+                        continue;
+                    if ((uint)idx >= (uint)palette.Length)
+                        throw new InvalidDataException(
+                            $"Pixel index {idx} at ({x},{y}) is outside palette length {palette.Length}.");
+                    if (!colorMap.TryGetValue(idx, out int mapped))
+                        throw new InvalidDataException(
+                            $"No remap entry for palette index {idx}. oldPaletteLength={palette.Length}, newPaletteLength={newPalette.Length}.");
+                    indices[y, x] = (byte)mapped;
+                }
+            }
+            palette = newPalette;
+        }
+
+        public static void QuantizeBmp(ref byte[,] indices, ref uint[] palette, int colorCount)
+        {
+            if (palette == null) throw new ArgumentNullException(nameof(palette));
+            if (indices == null) throw new ArgumentNullException(nameof(indices));
+            if (colorCount <= 0 || colorCount > palette.Length)
+                throw new ArgumentOutOfRangeException(nameof(colorCount),
+                    $"colorCount must be between 1 and {palette.Length}, got {colorCount}.");
+
+            uint[] newPalette = palette.Take(colorCount).ToArray();
+
+            // Map old palette index -> nearest index in newPalette
+            var colorMap = new Dictionary<int, int>(capacity: palette.Length - colorCount);
+
+            for (int i = colorCount; i < palette.Length; i++)
+            {
+                uint c = palette[i];
+                _ = GetNearestColor(c, newPalette, out int nearestIndex);
+                if (nearestIndex < 0)
+                    throw new InvalidOperationException($"Nearest color not found for palette index {i}.");
+
+                colorMap[i] = nearestIndex;
+            }
+
+            int h = indices.GetLength(0);
+            int w = indices.GetLength(1);
+
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 0; x < w; x++)
+                {
+                    int idx = indices[y, x];
+
+                    // Skip transparent
+                    if (idx == 0)
+                        continue;
+
+                    if ((uint)idx >= (uint)palette.Length)
+                        throw new InvalidDataException(
+                            $"Pixel index {idx} at ({x},{y}) is outside palette length {palette.Length}.");
+
+                    if (idx < colorCount)
+                        continue;
+
+                    if (!colorMap.TryGetValue(idx, out int mapped))
+                        throw new InvalidDataException(
+                            $"No remap entry for palette index {idx}. colorCount={colorCount}, paletteLength={palette.Length}.");
+
+                    indices[y, x] = (byte)mapped;
+                }
+            }
+
+            palette = newPalette;
         }
     }
 }
