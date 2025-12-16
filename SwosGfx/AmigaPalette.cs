@@ -186,33 +186,47 @@ namespace SwosGfx
         // comma comes *before* the newline.
         public static string PaletteToHex(
             ushort[] amigaPalette,
-            string prefix = "$",
-            bool eolComma = true)
+            string valuePrefix = "$",
+            bool eolComma = true,
+            string linePrefix = "")
         {
             if (amigaPalette == null)
                 throw new ArgumentNullException(nameof(amigaPalette));
 
+            const int perLine = 8;
             var sb = new StringBuilder();
 
             for (int i = 0; i < amigaPalette.Length; i++)
             {
-                sb.Append(prefix);
+                // Start of a new line
+                if (i % perLine == 0)
+                {
+                    if (i != 0)
+                        sb.AppendLine();
+                    sb.Append(linePrefix);
+                }
+
+                sb.Append(valuePrefix);
                 sb.Append(amigaPalette[i].ToString("X4"));
 
                 bool isLast = (i == amigaPalette.Length - 1);
-
                 if (!isLast)
                 {
-                    // End of an 8-entry block → comma then newline
-                    if (i % 8 == 7)
-                        sb.AppendLine(eolComma ? ",": "");
+                    // If this is the last entry in the line, we emit a comma (optional),
+                    // and the newline will be emitted at the start of the next iteration.
+                    if (i % perLine == perLine - 1)
+                    {
+                        if (eolComma)
+                            sb.Append(",");
+                    }
                     else
+                    {
                         sb.Append(",");
+                    }
                 }
             }
 
             sb.AppendLine();
-
             return sb.ToString();
         }
 
@@ -220,32 +234,44 @@ namespace SwosGfx
         // comma comes *before* the newline.
         public static string PaletteToHex(
             uint[] argbPalette,
-            string prefix = "$",
-            bool eolComma = true)
+            string valuePrefix = "$",
+            bool eolComma = true,
+            string linePrefix = "")
         {
             if (argbPalette == null)
                 throw new ArgumentNullException(nameof(argbPalette));
 
+            const int perLine = 8;
             var sb = new StringBuilder();
 
             for (int i = 0; i < argbPalette.Length; i++)
             {
-                sb.Append(prefix);
+                if (i % perLine == 0)
+                {
+                    if (i != 0)
+                        sb.AppendLine();
+                    sb.Append(linePrefix);
+                }
+
+                sb.Append(valuePrefix);
                 sb.Append(argbPalette[i].ToString("X8"));
 
                 bool isLast = (i == argbPalette.Length - 1);
-
                 if (!isLast)
                 {
-                    if (i % 8 == 7)
-                        sb.AppendLine(eolComma ? ",": "");
+                    if (i % perLine == perLine - 1)
+                    {
+                        if (eolComma)
+                            sb.Append(",");
+                    }
                     else
+                    {
                         sb.Append(",");
+                    }
                 }
             }
 
             sb.AppendLine();
-
             return sb.ToString();
         }
 
@@ -298,7 +324,7 @@ namespace SwosGfx
             string cFooter = "};";
             string commentPrefix = (fileFormat == FileFormat.Asm) ? ";" : "//";
             string hexPrefix = (fileFormat == FileFormat.Asm) ? "$" : "0x";
-            string linePrefix = (fileFormat == FileFormat.Asm) ? "    dc.w " : "";
+            string linePrefix = (fileFormat == FileFormat.Asm) ? "dc.w " : "    ";
             bool eolComma = (fileFormat != FileFormat.Asm);
 
             sb.AppendLine($"{commentPrefix} {name}");
@@ -306,7 +332,7 @@ namespace SwosGfx
             if (fileFormat == FileFormat.C)
                 sb.AppendLine(cHeader);
 
-            sb.AppendLine($"{linePrefix}{PaletteToHex(argbPalette, hexPrefix, eolComma)}");
+            sb.Append(PaletteToHex(argbPalette, hexPrefix, eolComma, linePrefix));
 
             if (fileFormat == FileFormat.C)
                 sb.AppendLine(cFooter);
@@ -314,7 +340,7 @@ namespace SwosGfx
             return sb.ToString();
         }
 
-        public static string PaletteToCode(
+         public static string PaletteToCode(
             string name,
             ushort[] amigaPalette,
             FileFormat fileFormat)
@@ -324,7 +350,7 @@ namespace SwosGfx
             string cFooter = "};";
             string commentPrefix = (fileFormat == FileFormat.Asm) ? ";" : "//";
             string hexPrefix = (fileFormat == FileFormat.Asm) ? "$" : "0x";
-            string linePrefix = (fileFormat == FileFormat.Asm) ? "dc.w " : "";
+            string linePrefix = (fileFormat == FileFormat.Asm) ? "dc.w " : "    ";
             bool eolComma = (fileFormat != FileFormat.Asm);
 
             sb.AppendLine($"{commentPrefix} {name}");
@@ -332,7 +358,7 @@ namespace SwosGfx
             if (fileFormat == FileFormat.C)
                 sb.AppendLine(cHeader);
 
-            sb.AppendLine($"    {linePrefix}{PaletteToHex(amigaPalette, hexPrefix, eolComma)}");
+            sb.Append(PaletteToHex(amigaPalette, hexPrefix, eolComma, linePrefix));
 
             if (fileFormat == FileFormat.C)
                 sb.AppendLine(cFooter);
