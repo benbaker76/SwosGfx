@@ -433,6 +433,7 @@ namespace SwosGfx
 
         private static void BuildSpritesAndMapping(
             PitchBitmapItem[,] tileMatrix,
+            int bitplanes,
             int maxTiles,
             out List<PitchBitmapItem> sprites,
             out int[,] tileIndices,
@@ -477,21 +478,23 @@ namespace SwosGfx
                 Console.WriteLine($"WARNING: Tile count {spriteCount} exceeds limit {maxTiles}.");
             }
 
-            // Build Mapping matrix from tile indices (Amigarize pitch matrix)
+            int tileHeight = 16;                   // 16x16 pitch tiles
+            int bytesPerTile = tileHeight * bitplanes * 2;  // 32*bitplanes
+
             mapping = new Mapping[rows, cols];
             for (int ty = 0; ty < rows; ty++)
             {
                 for (int tx = 0; tx < cols; tx++)
                 {
-                    int p = tileIndices[ty, tx];
-                    int p2 = p / 2;
-                    int pr = p % 2;
-                    byte b4 = (byte)(pr == 0 ? 0 : 128);
+                    int tileIndex = tileIndices[ty, tx];
 
-                    mapping[ty, tx].B1 = 0;
-                    mapping[ty, tx].B2 = 0;
-                    mapping[ty, tx].B3 = (byte)p2;
-                    mapping[ty, tx].B4 = b4;
+                    // If 0 means "no tile", leave it as 0 so the loader keeps it null.
+                    uint offset = (tileIndex == 0) ? 0u : (uint)(tileIndex * bytesPerTile);
+
+                    mapping[ty, tx].B1 = (byte)(offset >> 24);
+                    mapping[ty, tx].B2 = (byte)(offset >> 16);
+                    mapping[ty, tx].B3 = (byte)(offset >> 8);
+                    mapping[ty, tx].B4 = (byte)(offset);
                 }
             }
         }
@@ -585,29 +588,26 @@ namespace SwosGfx
             // 3) Build full pitch index buffer
             var fullIndices = new byte[PitchHeight, PitchWidth];
 
-            for (int ty = 0; ty < PitchTilesY; ty++)
+            for (int y = 0; y < PitchTilesY; y++)
             {
-                for (int tx = 0; tx < PitchTilesX; tx++)
+                for (int x = 0; x < PitchTilesX; x++)
                 {
-                    var m = mapping[ty, tx];
-                    int a = m.B3 * 2;
-                    int b = (m.B4 == 128) ? 1 : 0;
-                    int spriteIndex = a + b;
+                    int tileIndex = DecodePitchTileIndex(mapping[y, x], bitplanes, TileSize);
 
-                    if (spriteIndex < 0 || spriteIndex >= sprites.Count)
-                        throw new InvalidOperationException($"Mapping refers to sprite index {spriteIndex} but sprites.Count={sprites.Count}.");
+                    if ((uint)tileIndex >= (uint)sprites.Count)
+                        throw new InvalidOperationException(
+                            $"Mapping refers to tileIndex {tileIndex} but sprites.Count={sprites.Count}.");
 
-                    var tile = sprites[spriteIndex];
+                    var tile = sprites[tileIndex];
 
-                    int dstX0 = tx * TileSize;
-                    int dstY0 = ty * TileSize;
+                    int dstX0 = x * TileSize;
+                    int dstY0 = y * TileSize;
 
                     for (int j = 0; j < TileSize; j++)
                     {
                         for (int i = 0; i < TileSize; i++)
                         {
-                            byte idx = tile.Bits[j, i];
-                            fullIndices[dstY0 + j, dstX0 + i] = idx;
+                            fullIndices[dstY0 + j, dstX0 + i] = tile.Bits[j, i];
                         }
                     }
                 }
@@ -680,37 +680,30 @@ namespace SwosGfx
             Bmp8Helper.Write8bppBmpFromIndices(tilesBmpPath, tilesetIndices, palette, newPalette, colorCount);
 
             // 4) Write TMX
-            int tileCols = PitchTilesX;
-            int tileRows = PitchTilesY;
-
             var encoding = new UTF8Encoding(false);
             using var writer = new StreamWriter(tmxFullPath, false, encoding);
 
             writer.WriteLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
             writer.WriteLine("<map version=\"1.10\" tiledversion=\"1.10.2\" orientation=\"orthogonal\" renderorder=\"right-down\" " +
-                             $"width=\"{tileCols}\" height=\"{tileRows}\" tilewidth=\"{TileSize}\" tileheight=\"{TileSize}\" infinite=\"0\" nextlayerid=\"2\" nextobjectid=\"1\">");
+                             $"width=\"{PitchTilesX}\" height=\"{PitchTilesY}\" tilewidth=\"{TileSize}\" tileheight=\"{TileSize}\" infinite=\"0\" nextlayerid=\"2\" nextobjectid=\"1\">");
             writer.WriteLine($" <tileset firstgid=\"1\" name=\"tiles\" tilewidth=\"{TileSize}\" tileheight=\"{TileSize}\" tilecount=\"{tileCount}\" columns=\"{destCols}\">");
             writer.WriteLine($"  <image source=\"{Path.GetFileName(tilesBmpPath)}\" width=\"{imgWidth}\" height=\"{imgHeight}\"/>");
             writer.WriteLine(" </tileset>");
-            writer.WriteLine($" <layer id=\"1\" name=\"Tile Layer 1\" width=\"{tileCols}\" height=\"{tileRows}\">");
+            writer.WriteLine($" <layer id=\"1\" name=\"Tile Layer 1\" width=\"{PitchTilesX}\" height=\"{PitchTilesY}\">");
             writer.WriteLine("  <data encoding=\"csv\">");
 
-            for (int y = 0; y < tileRows; y++)
+            for (int y = 0; y < PitchTilesY; y++)
             {
-                for (int x = 0; x < tileCols; x++)
+                for (int x = 0; x < PitchTilesX; x++)
                 {
-                    var m = mapping[y, x];
-                    int a = m.B3 * 2;
-                    int b = (m.B4 == 128) ? 1 : 0;
-                    int spriteIndex = a + b;
-                    int gid = spriteIndex + 1; // 1-based tile ID for Tiled
+                    int tileIndex = DecodePitchTileIndex(mapping[y, x], bitplanes, TileSize);
+                    int gid = tileIndex + 1; // Tiled uses 1-based IDs; 0 is "empty"
 
-                    bool lastCell = (y == tileRows - 1) && (x == tileCols - 1);
+                    bool lastCell = (y == PitchTilesY - 1) && (x == PitchTilesX - 1);
+
                     writer.Write(gid);
-                    if (!lastCell)
-                        writer.Write(",");
-                    if (x == tileCols - 1)
-                        writer.WriteLine();
+                    if (!lastCell) writer.Write(",");
+                    if (x == PitchTilesX - 1) writer.WriteLine();
                 }
             }
 
@@ -863,7 +856,7 @@ namespace SwosGfx
             }
 
             // 4) Deduplicate tiles + build mapping, then write MAP
-            BuildSpritesAndMapping(tileMatrix, maxTiles, out var sprites, out var tileIndices, out var mapping);
+            BuildSpritesAndMapping(tileMatrix, bitplanes, maxTiles, out var sprites, out var tileIndices, out var mapping);
             WritePitchMap(outputMapPath, mapping, sprites, bitplanes);
         }
 
@@ -918,7 +911,7 @@ namespace SwosGfx
             }
 
             // 3) Deduplicate tiles and build mapping
-            BuildSpritesAndMapping(tileMatrix, maxTiles, out var sprites, out var tileIndices, out var mapping);
+            BuildSpritesAndMapping(tileMatrix, bitplanes, maxTiles, out var sprites, out var tileIndices, out var mapping);
 
             // 4) Write MAP with the requested bitplane depth
             WritePitchMap(outputMapPath, mapping, sprites, bitplanes);
@@ -1094,5 +1087,27 @@ namespace SwosGfx
                 $"Unknown raw format: {byteCount} bytes with {bitplanes} bitplanes. " +
                 $"Expected {exp320} bytes for 320x256, or {exp352} bytes for 352x272.");
         }
+
+        static int DecodePitchTileIndex(Mapping m, int bitplanes, int tileSize)
+        {
+            // Map stores big-endian 32-bit offset into the tile stream
+            uint offset =
+                ((uint)m.B1 << 24) |
+                ((uint)m.B2 << 16) |
+                ((uint)m.B3 << 8) |
+                (uint)m.B4;
+
+            int bytesPerTile = tileSize * bitplanes * 2; // 16x16 => 32*bitplanes
+
+            if (bytesPerTile <= 0)
+                throw new ArgumentOutOfRangeException(nameof(bitplanes));
+
+            if ((offset % (uint)bytesPerTile) != 0)
+                throw new InvalidOperationException(
+                    $"Bad pitch mapping offset 0x{offset:X8} (not divisible by bytesPerTile={bytesPerTile}).");
+
+            return (int)(offset / (uint)bytesPerTile);
+        }
+
     }
 }

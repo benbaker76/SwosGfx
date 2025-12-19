@@ -8,6 +8,12 @@ namespace SwosGfx
 {
     public static class AmigaPalette
     {
+        public enum DistanceType
+        {
+            Sqrt,
+            CIEDE2000
+        }
+        
         public enum ColorFormat
         {
             Amiga12,
@@ -444,16 +450,38 @@ namespace SwosGfx
             return 1 << bitplanes;
         }
 
-        public static double GetColorDistance(uint argb1, uint argb2)
+        public static double GetColorDistance(uint argb1, uint argb2, DistanceType distanceType)
         {
+            double minDistance = double.MaxValue;
+            double distance = 0;
+
             UnpackRgb(argb1, out byte r1, out byte g1, out byte b1);
             UnpackRgb(argb2, out byte r2, out byte g2, out byte b2);
 
-            CIELab lab1 = Lab.RGBtoLab(r1, g1, b1);
-            CIELab lab2 = Lab.RGBtoLab(r2, g2, b2);
 
-            double d = Lab.GetDeltaE_CIEDE2000(lab1, lab2);
-            return d;
+            if (distanceType == DistanceType.Sqrt)
+            {
+                distance = Math.Sqrt(
+                    Math.Pow(r1 - r2, 2) +
+                    Math.Pow(g1 - g2, 2) +
+                    Math.Pow(b1 - b2, 2)
+                );
+            }
+            else if (distanceType == DistanceType.CIEDE2000)
+            {
+                CIELab labColor = Lab.RGBtoLab(r1, g1, b1);
+                CIELab paletteLabColor = Lab.RGBtoLab(r2, g2, b2);
+
+                distance = Lab.GetDeltaE_CIEDE2000(labColor, paletteLabColor);
+            }
+
+            if (distance == 0)
+                return 0;
+
+            if (distance < minDistance)
+                minDistance = distance;
+
+            return minDistance;
         }
 
         public static double GetNearestColor(uint argb, uint[] palette, out int nearestIndex)
@@ -463,7 +491,8 @@ namespace SwosGfx
 
             for (int i = 0; i < palette.Length; i++)
             {
-                double distance = GetColorDistance(argb, palette[i]);
+                double distance = GetColorDistance(argb, palette[i], DistanceType.Sqrt);
+                
                 if (distance < minDistance)
                 {
                     minDistance = distance;
@@ -485,6 +514,14 @@ namespace SwosGfx
             for (int i = 0; i < palette.Length; i++)
             {
                 uint c = palette[i];
+
+                // If the color matches at the same index then leave the index unchanged
+                if (i < newPalette.Length && c == newPalette[i])
+                {
+                    colorMap[i] = i;
+                    continue;
+                }
+
                 _ = GetNearestColor(c, newPalette, out int nearestIndex);
                 if (nearestIndex < 0)
                     throw new InvalidOperationException($"Nearest color not found for palette index {i}.");
