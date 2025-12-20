@@ -109,6 +109,54 @@ SwosGfx -dos -sprites-import spritesDir
   * Picture files: `TITLE.256`, `SCORES.256`, `LOADSCR.256`
   * Sprite files: `SPRITE.DAT`, `CHARSET.DAT`, `SCORE.DAT`, `TEAM1.DAT`, `TEAM3.DAT"`, `GOAL1.DAT`, `GOAL1.DAT`, `BENCH.DAT`
 
+## File Info (Amiga)
+
+| Name         | Size    | Size (4 bitplanes) | Size (8 bitplanes) |
+| ------------ | ------- | ------------: | ------------: |
+| CHARSET.RAW  | 320x256 |         40960 |         81920 |
+| CJCBENCH.RAW | 320x256 |         40960 |         81920 |
+| CJCBITS.RAW  | 320x256 |         40960 |         81920 |
+| CJCGRAFS.RAW | 320x256 |         40960 |         81920 |
+| CJCTEAM1.RAW | 320x256 |         40960 |         81920 |
+| CJCTEAM2.RAW | 320x256 |         40960 |         81920 |
+| CJCTEAM3.RAW | 320x256 |         40960 |         81920 |
+| CJCTEAMG.RAW | 320x256 |         40960 |         81920 |
+| MENUS.RAW    | 320x256 |         40960 |         81920 |
+| MENUS2.RAW   | 320x256 |         40960 |         81920 |
+| SOCCER_S.RAW | 320x256 |         40960 |         81920 |
+| DISK22.RAW   | 352x272 |         47872 |         95744 |
+| LOADER00.RAW | 352x272 |         47872 |         95744 |
+| LOADER01.RAW | 352x272 |         47872 |         95744 |
+| LOADER1.RAW  | 352x272 |         47872 |         95744 |
+| LOADER2.RAW  | 352x272 |         47872 |         95744 |
+| LOADER3.RAW  | 352x272 |         47872 |         95744 |
+| LOADER4.RAW  | 352x272 |         47872 |         95744 |
+| LOADER5.RAW  | 352x272 |         47872 |         95744 |
+| LOADER6.RAW  | 352x272 |         47872 |         95744 |
+| LOADER7.RAW  | 352x272 |         47872 |         95744 |
+| LOADER8A.RAW | 352x272 |         47872 |         95744 |
+| LOADER8B.RAW | 352x272 |         47872 |         95744 |
+| LOADER9.RAW  | 352x272 |         47872 |         95744 |
+| LOADER10.RAW | 352x272 |         47872 |         95744 |
+| MENUBG.RAW   | 352x272 |         47872 |         95744 |
+| MENUBG2.RAW  | 352x272 |         47872 |         95744 |
+| OLDDISK1.RAW | 352x272 |         47872 |         95744 |
+
+| Name         | Map Size WxH      | Size in Pixels  | Size (4 bitplanes) Map / Tiles / Total | Size (8 bitplanes) Map / Tiles / Total |
+| ------------ | ------- | ------- | --------------------------: | -----------------------: |
+| SWCPICH1.MAP | 42x55   | 672x880 |        9240 / 36352 / 45592 |     9240 / 61952 / 71192 |
+| SWCPICH2.MAP | 42x55   | 672x880 |        9240 / 30208 / 39448 |     9240 / 57856 / 67096 |
+| SWCPICH3.MAP | 42x55   | 672x880 |        9240 / 33792 / 43032 |     9240 / 66304 / 75544 |
+| SWCPICH4.MAP | 42x55   | 672x880 |        9240 / 30592 / 39832 |     9240 / 60672 / 69912 |
+| SWCPICH5.MAP | 42x55   | 672x880 |        9240 / 35072 / 44312 |     9240 / 68864 / 78104 |
+| SWCPICH6.MAP | 42x55   | 672x880 |        9240 / 22144 / 31384 |     9240 / 54016 / 63256 |
+
+## Map Data (Amiga)
+
+The Amiga map format consists of a 42 x 55 tile map followed immediately by the tile pixel data. The tile map is an array of 32-bit values, one per tile cell (42 * 55 = 2310 entries, 9240 bytes total). Each entry stores an offset (byte address) into the tile data block for the tile that should be drawn at that cell. In other words, the map does not store "tile indices" in the conventional sense; it stores pointers/offsets to the tile’s pixel payload within the tile data that follows.
+
+Directly after the 9240-byte tile map comes the tile data itself, stored as a contiguous stream of 16 x 16 pixel tiles in classic Amiga planar (bitplane) format using 4 bitplanes (16 colors). Each tile is encoded one scanline at a time: for each of the 16 rows, the data contains one 16-bit word per bitplane (because 16 pixels / 16 bits = 1 word). The planes are stored separately, and the final pixel color index is reconstructed by taking the corresponding bit from each plane (plane 0 is the least-significant bit), combining them into a 4-bit value in the range 0-15. This yields a per-tile storage size of 16 rows x 4 planes x 2 bytes = 128 bytes per tile, and the map entry offsets point to the start of these 128-byte tile records within the tile data stream.
+
 ---
 
 ## Common options
