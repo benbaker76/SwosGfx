@@ -157,6 +157,67 @@ The Amiga map format consists of a 42 x 55 tile map followed immediately by the 
 
 Directly after the 9240-byte tile map comes the tile data itself, stored as a contiguous stream of 16 x 16 pixel tiles in classic Amiga planar (bitplane) format using 4 bitplanes (16 colors). Each tile is encoded one scanline at a time: for each of the 16 rows, the data contains one 16-bit word per bitplane (because 16 pixels / 16 bits = 1 word). The planes are stored separately, and the final pixel color index is reconstructed by taking the corresponding bit from each plane (plane 0 is the least-significant bit), combining them into a 4-bit value in the range 0-15. This yields a per-tile storage size of 16 rows x 4 planes x 2 bytes = 128 bytes per tile, and the map entry offsets point to the start of these 128-byte tile records within the tile data stream.
 
+## Palettes (Amiga)
+
+### Game
+![](images/amiga_pal_game.png)
+
+### Menu
+![](images/amiga_pal_menu.png)
+
+### Pitch (Frozen)
+![](images/amiga_pal_frozen.png)
+
+### Pitch (Muddy)
+![](images/amiga_pal_muddy.png)
+
+### Pitch (Wet)
+![](images/amiga_pal_wet.png)
+
+### Pitch (Soft)
+![](images/amiga_pal_soft.png)
+
+### Pitch (Normal)
+![](images/amiga_pal_normal.png)
+
+### Pitch (Dry)
+![](images/amiga_pal_dry.png)
+
+### Pitch (Hard)
+![](images/amiga_pal_hard.png)
+
+## Palettes (DOS)
+
+For the pitch palettes each color is written to index 0, 7, 9, 78, 79, 80, 81, 106 and 107 of the Game palette respectively.
+
+### Game
+![](images/dos_pal_game.png)
+
+### Menu
+![](images/dos_pal_menu.png)
+
+### Pitch (Frozen)
+![](images/dos_pal_frozen.png)
+
+### Pitch (Muddy)
+![](images/dos_pal_muddy.png)
+
+### Pitch (Wet)
+![](images/dos_pal_wet.png)
+
+### Pitch (Soft)
+![](images/dos_pal_soft.png)
+
+### Pitch (Normal)
+![](images/dos_pal_normal.png)
+
+### Pitch (Dry)
+![](images/dos_pal_dry.png)
+
+### Pitch (Hard)
+![](images/dos_pal_hard.png)
+
+
 ---
 
 ## Common options
@@ -224,7 +285,8 @@ SwosGfx -palettes
     [-pal-file=asm|c|palette]                  # default: asm
     [-pal-count=16|128|256]                    # default: 16
     [-pal-full]                                # default: only pitch-affected colors for pitches
-    [-pal-format=act|mspal|jasc|gimp|paintnet]  # for -pal-file=palette, default: act
+    [-pal-format=act|mspal|jasc|gimp|paintnet] # for -pal-file=palette, default: act
+    [outDir]                                   # optional output directory
 ```
 
 ---
@@ -241,8 +303,8 @@ SwosGfx -amiga -bmp -output=map -bitplanes=7 dos-pitches/pitch1-normal.bmp SWCPI
 # Convert the Amiga pitch MAP back to an AGA BMP using the selected palette
 SwosGfx -amiga -map -output=bmp -palette=Normal -bitplanes=7 SWCPICH1.MAP pitch1-amiga-aga.bmp
 
-# Export all palettes (Menu + Game + all pitch types) as 256-color ACT files
-SwosGfx -palettes -pal-color=rgb32 -pal-file=palette -pal-count=256 -pal-full -pal-format=act
+# Export all palettes (Menu + Game + all pitch types) as 256-color ACT files into the Palettes directory
+SwosGfx -palettes -pal-color=rgb32 -pal-file=palette -pal-count=256 -pal-full -pal-format=act Palettes
 ```
 
 ### More Amiga examples

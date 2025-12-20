@@ -282,6 +282,7 @@ namespace SwosGfx
         }
 
         public static void PaletteToPalette(
+            string outputPath,
             string name,
             uint[] argbPalette,
             PaletteFormat paletteFormat)
@@ -294,19 +295,19 @@ namespace SwosGfx
             switch(paletteFormat)
             {
                 case PaletteFormat.Act:
-                    fileName = $"{name}.act";
+                    fileName = GetFileName(outputPath, $"{name}.act");
                     break;
                 case PaletteFormat.MSPal:
-                    fileName = $"{name}.pal";
+                    fileName = GetFileName(outputPath, $"{name}.pal");
                     break;
                 case PaletteFormat.JASC:
-                    fileName = $"{name}.pal";
+                    fileName = GetFileName(outputPath, $"{name}.pal");
                     break;
                 case PaletteFormat.GIMP:
-                    fileName = $"{name}.gpl";
+                    fileName = GetFileName(outputPath, $"{name}.gpl");
                     break;
                 case PaletteFormat.PaintNET:
-                    fileName = $"{name}.txt";
+                    fileName = GetFileName(outputPath, $"{name}.txt");
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(paletteFormat), "Unsupported palette format.");
@@ -372,31 +373,50 @@ namespace SwosGfx
             return sb.ToString();
         }
 
-        public static void OutputAllPalettes(ColorFormat colorFormat, FileFormat fileFormat, ColorCount colorCount, bool fullPalettes = false, PaletteFormat paletteFormat = PaletteFormat.Act)
+        private static void CreateDirectory(string outDir)
+        {
+            if (!string.IsNullOrEmpty(outDir))
+            {
+                if (!Directory.Exists(outDir))
+                    Directory.CreateDirectory(outDir);
+            }
+        }
+
+        private static string GetFileName(string outDir, string fileName)
+        {
+            if (!string.IsNullOrEmpty(outDir))
+                return Path.Combine(outDir, fileName);
+
+            return fileName;
+        }
+
+        public static void OutputAllPalettes(string outDir, ColorFormat colorFormat, FileFormat fileFormat, ColorCount colorCount, bool fullPalettes = false, PaletteFormat paletteFormat = PaletteFormat.Act)
         {
             string extension = (fileFormat == FileFormat.Asm) ? ".s" : ".c";
+
+            CreateDirectory(outDir);
 
             if (colorFormat == ColorFormat.Amiga12)
             {
                 if (colorCount == ColorCount.Colors16)
                 {
-                    File.WriteAllText($"Menu{extension}", PaletteToCode("Menu", AmigaPalette.Menu, fileFormat));
-                    File.WriteAllText($"Game{extension}", PaletteToCode("Game", AmigaPalette.Game, fileFormat));
+                    File.WriteAllText(GetFileName(outDir, $"Menu{extension}"), PaletteToCode("Menu", AmigaPalette.Menu, fileFormat));
+                    File.WriteAllText(GetFileName(outDir, $"Game{extension}"), PaletteToCode("Game", AmigaPalette.Game, fileFormat));
 
                     for (int i = 0; i < PitchPaletteNames.Length; i++)
-                        File.WriteAllText($"{PitchPaletteNames[i]}{extension}", PaletteToCode(PitchPaletteNames[i], AmigaPalette.Pitches[i], fileFormat));
+                        File.WriteAllText(GetFileName(outDir, $"{PitchPaletteNames[i]}{extension}"), PaletteToCode(PitchPaletteNames[i], AmigaPalette.Pitches[i], fileFormat));
                 }
                 else
                 {
-                    File.WriteAllText($"Menu{extension}", PaletteToCode("Menu", PaletteToAmiga12(DosPalette.Menu.Take((int)colorCount).ToArray()), fileFormat));
-                    File.WriteAllText($"Game{extension}", PaletteToCode("Game", PaletteToAmiga12(DosPalette.Game.Take((int)colorCount).ToArray()), fileFormat));
+                    File.WriteAllText(GetFileName(outDir, $"Menu{extension}"), PaletteToCode("Menu", PaletteToAmiga12(DosPalette.Menu.Take((int)colorCount).ToArray()), fileFormat));
+                    File.WriteAllText(GetFileName(outDir, $"Game{extension}"), PaletteToCode("Game", PaletteToAmiga12(DosPalette.Game.Take((int)colorCount).ToArray()), fileFormat));
 
                     for (int i = 0; i < PitchPaletteNames.Length; i++)
                     {
                         if (fullPalettes)
-                            File.WriteAllText($"{PitchPaletteNames[i]}{extension}", PaletteToCode(PitchPaletteNames[i], PaletteToAmiga12(DosPalette.Pitches[i].Take((int)colorCount).ToArray()), fileFormat));
+                            File.WriteAllText(GetFileName(outDir, $"{PitchPaletteNames[i]}{extension}"), PaletteToCode(PitchPaletteNames[i], PaletteToAmiga12(DosPalette.GetPitchPalette((PitchType)i).Take((int)colorCount).ToArray()), fileFormat));
                         else
-                            File.WriteAllText($"{PitchPaletteNames[i]}{extension}", PaletteToCode(PitchPaletteNames[i], PaletteToAmiga12(DosPalette.Pitches[i].Skip(DosPitch.PaletteIndicesToChange[i]).Take(9).ToArray()), fileFormat));
+                            File.WriteAllText(GetFileName(outDir, $"{PitchPaletteNames[i]}{extension}"), PaletteToCode(PitchPaletteNames[i], PaletteToAmiga12(DosPalette.GetPitchPalette((PitchType)i).Skip(DosPalette.PaletteIndices[i]).Take(9).ToArray()), fileFormat));
                     }
                 }
             }
@@ -404,28 +424,50 @@ namespace SwosGfx
             {
                 if (fileFormat == FileFormat.Palette)
                 {
-                    PaletteToPalette("Menu", DosPalette.Menu.Take((int)colorCount).ToArray(), paletteFormat);
-                    PaletteToPalette("Game", DosPalette.Game.Take((int)colorCount).ToArray(), paletteFormat);
-
-                    for (int i = 0; i < PitchPaletteNames.Length; i++)
+                    if (colorCount == ColorCount.Colors16)
                     {
-                        if (fullPalettes)
-                            PaletteToPalette(PitchPaletteNames[i], DosPalette.Pitches[i].Take((int)colorCount).ToArray(), paletteFormat);
-                        else
-                            PaletteToPalette(PitchPaletteNames[i], DosPalette.Pitches[i].Skip(DosPitch.PaletteIndicesToChange[i]).Take(9).ToArray(), paletteFormat);
+                        PaletteToPalette(outDir, "Menu", PaletteFromAmiga12(AmigaPalette.Menu), paletteFormat);
+                        PaletteToPalette(outDir, "Game", PaletteFromAmiga12(AmigaPalette.Game), paletteFormat);
+
+                        for (int i = 0; i < PitchPaletteNames.Length; i++)
+                            PaletteToPalette(outDir, PitchPaletteNames[i], PaletteFromAmiga12(AmigaPalette.Pitches[i]), paletteFormat);
+                    }
+                    else
+                    {
+                        PaletteToPalette(outDir, "Menu", DosPalette.Menu.Take((int)colorCount).ToArray(), paletteFormat);
+                        PaletteToPalette(outDir, "Game", DosPalette.Game.Take((int)colorCount).ToArray(), paletteFormat);
+
+                        for (int i = 0; i < PitchPaletteNames.Length; i++)
+                        {
+                            if (fullPalettes)
+                                PaletteToPalette(outDir, PitchPaletteNames[i], DosPalette.GetPitchPalette((PitchType)i).Take((int)colorCount).ToArray(), paletteFormat);
+                            else
+                                PaletteToPalette(outDir, PitchPaletteNames[i], DosPalette.GetPitchPalette((PitchType)i).Skip(DosPalette.PaletteIndices[i]).Take(9).ToArray(), paletteFormat);
+                        }
                     }
                 }
                 else
                 {
-                    File.WriteAllText($"Menu{extension}", PaletteToCode("Menu", DosPalette.Menu.Take((int)colorCount).ToArray(), fileFormat));
-                    File.WriteAllText($"Game{extension}", PaletteToCode("Game", DosPalette.Game.Take((int)colorCount).ToArray(), fileFormat));
-
-                    for (int i = 0; i < PitchPaletteNames.Length; i++)
+                    if (colorCount == ColorCount.Colors16)
                     {
-                        if (fullPalettes)
-                            File.WriteAllText($"{PitchPaletteNames[i]}{extension}", PaletteToCode(PitchPaletteNames[i], DosPalette.Pitches[i].Take((int)colorCount).ToArray(), fileFormat));
-                        else
-                            File.WriteAllText($"{PitchPaletteNames[i]}{extension}", PaletteToCode(PitchPaletteNames[i], DosPalette.Pitches[i].Skip(DosPitch.PaletteIndicesToChange[i]).Take(9).ToArray(), fileFormat));
+                        File.WriteAllText(Path.Combine(outDir, $"Menu{extension}"), PaletteToCode("Menu", AmigaPalette.Menu, fileFormat));
+                        File.WriteAllText(Path.Combine(outDir, $"Game{extension}"), PaletteToCode("Game", AmigaPalette.Game, fileFormat));
+                        
+                        for (int i = 0; i < PitchPaletteNames.Length; i++)
+                            File.WriteAllText(Path.Combine(outDir, $"{PitchPaletteNames[i]}{extension}"), PaletteToCode(PitchPaletteNames[i], AmigaPalette.Pitches[i], fileFormat));
+                    }
+                    else
+                    {
+                        File.WriteAllText(Path.Combine(outDir, $"Menu{extension}"), PaletteToCode("Menu", DosPalette.Menu.Take((int)colorCount).ToArray(), fileFormat));
+                        File.WriteAllText(Path.Combine(outDir, $"Game{extension}"), PaletteToCode("Game", DosPalette.Game.Take((int)colorCount).ToArray(), fileFormat));
+
+                        for (int i = 0; i < PitchPaletteNames.Length; i++)
+                        {
+                            if (fullPalettes)
+                                File.WriteAllText(Path.Combine(outDir, $"{PitchPaletteNames[i]}{extension}"), PaletteToCode(PitchPaletteNames[i], DosPalette.GetPitchPalette((PitchType)i).Take((int)colorCount).ToArray(), fileFormat));
+                            else
+                                File.WriteAllText(Path.Combine(outDir, $"{PitchPaletteNames[i]}{extension}"), PaletteToCode(PitchPaletteNames[i], DosPalette.GetPitchPalette((PitchType)i).Skip(DosPalette.PaletteIndices[i]).Take(9).ToArray(), fileFormat));
+                        }
                     }
                 }
             }

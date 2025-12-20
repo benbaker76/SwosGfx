@@ -64,7 +64,7 @@ class Program
 
         // DOS pitch rendering
         public int PitchIndex = 0;
-        public DosPitchType PitchType = DosPitchType.Normal;
+        public PitchType PitchType = PitchType.Normal;
         public int DosColorCount = 256; // Reduce to N colors (16-256)
 
         // DOS sprite options
@@ -83,10 +83,6 @@ class Program
 
     public static int Main(string[] args)
     {
-        uint[] loaderPal = AmigaPalette.PaletteFromAmiga12(AmigaPalette.TitleScreen);
-
-        AmigaPalette.PaletteToPalette("LOADER", loaderPal, PaletteFormat.PaintNET);
-
         if (args.Length < 1)
         {
             PrintUsage();
@@ -117,6 +113,7 @@ class Program
                 try
                 {
                     AmigaPalette.OutputAllPalettes(
+                        opts.Files.Count > 0 ? opts.Files[0] : null,
                         opts.PaletteColorFormat,
                         opts.PaletteFileFormat,
                         opts.PaletteColorCount,
@@ -481,15 +478,9 @@ class Program
         if (options.ShowHelp)
             return true;
 
-        // Palette export mode: no input/output files, no Amiga/DOS validations.
+        // Palette export mode: nno Amiga/DOS validations.
         if (options.PaletteMode)
         {
-            if (options.Files.Count != 0)
-            {
-                error = "Palette export (-palettes) does not take input/output files.";
-                return false;
-            }
-
             // We ignore -amiga/-dos/-map/-output/etc in this mode.
             return true;
         }
@@ -1030,13 +1021,14 @@ class Program
         Console.WriteLine("Amiga raw format dimensions:");
         Console.WriteLine("  320x256, 352x272");
         Console.WriteLine();
-        Console.WriteLine("Palette export (no input/output files, writes multiple files):");
+        Console.WriteLine("Palette export (writes multiple files):");
         Console.WriteLine("  SwosGfx -palettes");
         Console.WriteLine("    [-pal-color=amiga12|rgb32]     (default: amiga12)");
         Console.WriteLine("    [-pal-file=asm|c|palette]      (default: asm)");
         Console.WriteLine("    [-pal-count=16|128|256]        (default: 16)");
         Console.WriteLine("    [-pal-full]                    (default: only pitch-affected colors for pitches)");
         Console.WriteLine("    [-pal-format=act|mspal|jasc|gimp|paintnet]  (for -pal-file=palette, default: act)");
+        Console.WriteLine("    [outDir]                       Optional output directory");
         Console.WriteLine();
     }
 
@@ -1052,7 +1044,7 @@ class Program
             if (AmigaPalette.PitchPaletteNames[i].ToLowerInvariant() != key)
                 continue;
 
-            return colorCount > 16 ? DosPalette.Pitches[i] : AmigaPalette.PaletteFromAmiga12(AmigaPalette.Pitches[i]);
+            return colorCount > 16 ? DosPalette.GetPitchPalette((PitchType)i) : AmigaPalette.PaletteFromAmiga12(AmigaPalette.Pitches[i]);
         }
 
         if (String.Equals(key, "menu", StringComparison.OrdinalIgnoreCase))
@@ -1084,20 +1076,20 @@ class Program
             $"Unknown palette '{paletteName}'. Valid names: {String.Join(", ", AmigaPalette.PitchPaletteNames)}.");
     }
 
-    private static bool TryParseDosPitchType(string value, out DosPitchType type)
+    private static bool TryParseDosPitchType(string value, out PitchType type)
     {
         string v = value.Trim().ToLowerInvariant();
+        type = PitchType.Normal;
 
         for (int i = 0; i < AmigaPalette.PitchPaletteNames.Length; i++)
         {
             if (AmigaPalette.PitchPaletteNames[i].ToLowerInvariant() != v)
                 continue;
 
-            type = (DosPitchType)i;
+            type = (PitchType)i;
             return true;
         }
 
-        type = DosPitchType.Normal;
         return false;
     }
 }

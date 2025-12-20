@@ -11,7 +11,7 @@ namespace SwosGfx
     /// Types of pitch in SWOS - controls palette tweaks.
     /// Must match original enum order: FROZEN, MUDDY, WET, SOFT, NORMAL, DRY, HARD.
     /// </summary>
-    public enum DosPitchType
+    public enum PitchType
     {
         Frozen = 0,
         Muddy = 1,
@@ -68,12 +68,12 @@ namespace SwosGfx
         /// <summary>
         /// Build the full pitch image as palette indices (top-down int[,] [y,x]) + palette (ARGB uint[]).
         /// </summary>
-        public (byte[,] Indices, uint[] Palette) BuildPitchImage(int pitchIndex, DosPitchType pitchType)
+        public (byte[,] Indices, uint[] Palette) BuildPitchImage(int pitchIndex, PitchType pitchType)
         {
             if (pitchIndex < 0 || pitchIndex >= _patterns.MaxPitch)
                 throw new ArgumentOutOfRangeException(nameof(pitchIndex));
 
-            uint[] palette = BuildPitchPalette(pitchType);
+            uint[] palette = DosPalette.GetPitchPalette(pitchType);
 
             // Top-down indices: [y,x]
             var indices = new byte[Height, Width];
@@ -100,7 +100,7 @@ namespace SwosGfx
             return (indices, palette);
         }
 
-        public void SavePitchAsBmp(int pitchIndex, DosPitchType pitchType, string path, int colorCount = 256)
+        public void SavePitchAsBmp(int pitchIndex, PitchType pitchType, string path, int colorCount = 256)
         {
             if (path == null) throw new ArgumentNullException(nameof(path));
 
@@ -108,7 +108,7 @@ namespace SwosGfx
             Write8bppIndexedBmp(path, Width, Height, indices, palette, colorCount);
         }
 
-        public void SavePitchAsTmx(int pitchIndex, DosPitchType pitchType, string path, int colorCount = 256)
+        public void SavePitchAsTmx(int pitchIndex, PitchType pitchType, string path, int colorCount = 256)
         {
             if (path == null) throw new ArgumentNullException(nameof(path));
             if (pitchIndex < 0 || pitchIndex >= _patterns.MaxPitch)
@@ -119,7 +119,7 @@ namespace SwosGfx
             string baseName = Path.GetFileNameWithoutExtension(fullTmxPath);
             string tilesBmpPath = Path.Combine(tmxDir, baseName + ".bmp");
 
-            uint[] palette = BuildPitchPalette(pitchType);
+            uint[] palette = DosPalette.GetPitchPalette(pitchType);
             int pointerCount = _patterns.GetPointerCount(pitchIndex);
 
             // patternIndex -> tileId (0-based)
@@ -337,61 +337,6 @@ namespace SwosGfx
 
             // --- Pixel data ---
             bw.Write(pixelData);
-        }
-
-        // === Pitch palette handling =========================================
-
-        private static readonly uint[,] PatCols =
-        {
-            { 0x484830, 0x404830, 0x384830, 0x5E5E50, 0x4D4D42, 0x1F1F1A, 0x2D2D27, 0x443B2B, 0x504E45 }, // Frozen
-            { 0x382800, 0x302800, 0x282800, 0x645D53, 0x583D00, 0x221600, 0x2F1D00, 0x2A1E04, 0x5C4E3D }, // Muddy
-            { 0x184800, 0x384800, 0x184800, 0x5C6150, 0x425718, 0x1E2D00, 0x243700, 0x333E00, 0x5A5B4B }, // Wet
-            { 0x183800, 0x383800, 0x183800, 0x5B614C, 0x2B4B12, 0x172300, 0x1E2D00, 0x2F2D00, 0x525240 }, // Soft
-            { 0x384800, 0x304800, 0x484800, 0x5A604C, 0x405517, 0x1E2D00, 0x253700, 0x3E4001, 0x605C44 }, // Normal
-            { 0x484800, 0x404800, 0x384800, 0x595C4B, 0x435918, 0x1E2D00, 0x243700, 0x433C00, 0x5E5245 }, // Dry
-            { 0x483800, 0x403800, 0x383800, 0x645D4A, 0x5A4500, 0x271E00, 0x342700, 0x283200, 0x584D38 }  // Hard
-        };
-
-        public static readonly byte[] PaletteIndicesToChange = { 0, 7, 9, 78, 79, 80, 81, 106, 107 };
-
-        /// <summary>
-        /// Build a pitch palette for the given pitch type, starting from DosPalette.Game (ARGB uint[256]).
-        /// </summary>
-        public static uint[] BuildPitchPalette(DosPitchType pitchType)
-        {
-            var basePal = DosPalette.Game;
-            if (basePal == null || basePal.Length != 256)
-                throw new InvalidOperationException("DosPalette.Game must contain 256 entries.");
-
-            var palette = new uint[256];
-            Array.Copy(basePal, palette, 256);
-
-            int typeIndex = (int)pitchType;
-            if (typeIndex < 0 || typeIndex >= PatCols.GetLength(0))
-                throw new ArgumentOutOfRangeException(nameof(pitchType));
-
-            for (int i = 0; i < PaletteIndicesToChange.Length; i++)
-            {
-                int palIndex = PaletteIndicesToChange[i];
-                uint packed = PatCols[typeIndex, i]; // 0xRRGGBB
-
-                int r = (int)((packed >> 16) & 0xFF);
-                int g = (int)((packed >> 8) & 0xFF);
-                int b = (int)(packed & 0xFF);
-
-                // Original DOS logic: (value & ~1) << 1
-                r = (r & ~1) << 1;
-                g = (g & ~1) << 1;
-                b = (b & ~1) << 1;
-
-                r = Math.Clamp(r, 0, 255);
-                g = Math.Clamp(g, 0, 255);
-                b = Math.Clamp(b, 0, 255);
-
-                palette[palIndex] = AmigaPalette.PackArgb(0xFF, (byte)r, (byte)g, (byte)b);
-            }
-
-            return palette;
         }
     }
 }
