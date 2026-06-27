@@ -326,17 +326,28 @@ namespace SwosGfx
 
             int bytesPerLine = spr.WQuads * 8;
 
-            // spr.Data rows are stored bottom-up; convert to top-down.
+            // spr.Data is stored in SWOS "chained" (4-plane interleaved) format. It MUST be
+            // de-chained into linear 4bpp before reading pixels, otherwise each line renders
+            // as 4 interleaved columns (the "4 pitches instead of 1" bug). ChainSprite
+            // de-chains in place, so work on a copy and leave spr.Data untouched - the
+            // re-import path still needs the original chained bytes. (swpe un-chains sprites
+            // at load time; doing it per-export here is equivalent and side-effect free.)
+            var data = (byte[])spr.Data.Clone();
+            DosSpriteCodec.ChainSprite(data, height, spr.WQuads);
+
+            // spr.Data rows are top-down (row 0 = top), and Write8bppBmp already flips a
+            // top-down buffer to the bottom-up BMP layout, so copy rows straight through.
+            // (A flip here would double up with the writer's flip and invert the image.)
             for (int y = 0; y < height; y++)
             {
-                int srcRow = height - 1 - y;
+                int srcRow = y;
                 int srcBase = srcRow * bytesPerLine;
                 int dstBase = y * width;
 
                 for (int x = 0; x < width; x++)
                 {
                     int byteIndex = srcBase + (x >> 1);
-                    byte packed = spr.Data[byteIndex];
+                    byte packed = data[byteIndex];
                     byte index = (byte)((x & 1) == 0 ? (packed >> 4) : (packed & 0x0F));
 
                     // 0 = transparent (leave as 16)
@@ -466,11 +477,13 @@ namespace SwosGfx
             // Fill with 0 to eliminate padding garbage
             Array.Clear(spr.Data, 0, spr.Data.Length);
 
-            // Encode: 2 pixels per byte, rows written bottom-up
+            // Encode: 2 pixels per byte. The BMP is read top-down and spr.Data is top-down
+            // (row 0 = top), so write rows straight through - this MUST match SaveSpriteToBmp,
+            // which no longer flips either. (A flip here would invert re-imported sprites.)
             for (int y = 0; y < height; y++)
             {
                 int srcBase = y * width;
-                int dstRow = height - 1 - y;                // bottom-up
+                int dstRow = y;
                 int dstBase = dstRow * bytesPerLine;
 
                 for (int x = 0; x < width; x += 2)
@@ -487,6 +500,13 @@ namespace SwosGfx
                     spr.Data[dstByteIndex] = packed;
                 }
             }
+
+            // The pixels above were packed LINEAR (chunky 4bpp). On disk, sprites are stored
+            // in SWOS "chained" (4-plane interleaved) format, and SaveChangesToSprites writes
+            // spr.Data verbatim - Load() ran with no chain delegates, so every other sprite is
+            // still chained too. Re-chain this imported sprite so the DAT stays consistent;
+            // otherwise the game would render it as 4 interleaved columns.
+            DosSpriteCodec.UnchainSprite(spr.Data, height, spr.WQuads);
 
             return true;
         }

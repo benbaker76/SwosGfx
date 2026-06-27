@@ -99,6 +99,12 @@ namespace SwosGfx
             0xFF646464, 0xFF747474, 0xFFB48484, 0xFF848484, 0xFF949494, 0xFFA4A4A4, 0xFFB4B4B4, 0xFFC03838
         };
 
+        public static readonly uint[] Service =
+        {
+            0xFF000000, 0xFFADADAD, 0xFFF7F7F7, 0xFFF70000, 0xFFEF9400, 0xFFEFEF00, 0xFF00F700, 0xFF0000F7,
+            0xFF73A573, 0xFF00D6F7, 0xFF6B6B6B, 0xFFDEC600, 0xFF00CEFF, 0xFFF77BBD, 0xFFF700F7, 0xFFCEDEFF
+        };
+
         /// <summary>
         /// Get a pitch palette for the given pitch type, starting from DosPalette.Game (ARGB uint[256]).
         /// </summary>

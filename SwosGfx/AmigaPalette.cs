@@ -57,6 +57,12 @@ namespace SwosGfx
             0x0030, 0x0370, 0x0F00, 0x000F, 0x0702, 0x088F, 0x0380, 0x0FF0
         };
 
+        public static readonly ushort[] Service =
+        {
+            0x0000, 0x0AAA, 0x0FFF, 0x0F00, 0x0E90, 0x0EE0, 0x00F0, 0x000F,
+            0x07A7, 0x00DF, 0x0666, 0x0DC0, 0x00CF, 0x0F7B, 0x0F0F, 0x0CDF
+        };
+
         public static readonly ushort[] TitleLogo =
         {
             0x0002, 0x0A02, 0x0FB2, 0x0333, 0x043A, 0x0082, 0x0CCC, 0x0888,
@@ -402,6 +408,7 @@ namespace SwosGfx
                 {
                     File.WriteAllText(GetFileName(outDir, $"Menu{extension}"), PaletteToCode("Menu", AmigaPalette.Menu, fileFormat));
                     File.WriteAllText(GetFileName(outDir, $"Game{extension}"), PaletteToCode("Game", AmigaPalette.Game, fileFormat));
+                    File.WriteAllText(GetFileName(outDir, $"Service{extension}"), PaletteToCode("Service", AmigaPalette.Service, fileFormat));
 
                     for (int i = 0; i < PitchPaletteNames.Length; i++)
                         File.WriteAllText(GetFileName(outDir, $"{PitchPaletteNames[i]}{extension}"), PaletteToCode(PitchPaletteNames[i], AmigaPalette.Pitches[i], fileFormat));
@@ -410,6 +417,7 @@ namespace SwosGfx
                 {
                     File.WriteAllText(GetFileName(outDir, $"Menu{extension}"), PaletteToCode("Menu", PaletteToAmiga12(DosPalette.Menu.Take((int)colorCount).ToArray()), fileFormat));
                     File.WriteAllText(GetFileName(outDir, $"Game{extension}"), PaletteToCode("Game", PaletteToAmiga12(DosPalette.Game.Take((int)colorCount).ToArray()), fileFormat));
+                    File.WriteAllText(GetFileName(outDir, $"Service{extension}"), PaletteToCode("Service", PaletteToAmiga12(DosPalette.Service.Take((int)colorCount).ToArray()), fileFormat));
 
                     for (int i = 0; i < PitchPaletteNames.Length; i++)
                     {
@@ -428,6 +436,7 @@ namespace SwosGfx
                     {
                         PaletteToPalette(outDir, "Menu", PaletteFromAmiga12(AmigaPalette.Menu), paletteFormat);
                         PaletteToPalette(outDir, "Game", PaletteFromAmiga12(AmigaPalette.Game), paletteFormat);
+                        PaletteToPalette(outDir, "Service", PaletteFromAmiga12(AmigaPalette.Service), paletteFormat);
 
                         for (int i = 0; i < PitchPaletteNames.Length; i++)
                             PaletteToPalette(outDir, PitchPaletteNames[i], PaletteFromAmiga12(AmigaPalette.Pitches[i]), paletteFormat);
@@ -436,6 +445,7 @@ namespace SwosGfx
                     {
                         PaletteToPalette(outDir, "Menu", DosPalette.Menu.Take((int)colorCount).ToArray(), paletteFormat);
                         PaletteToPalette(outDir, "Game", DosPalette.Game.Take((int)colorCount).ToArray(), paletteFormat);
+                        PaletteToPalette(outDir, "Service", DosPalette.Service.Take((int)colorCount).ToArray(), paletteFormat);
 
                         for (int i = 0; i < PitchPaletteNames.Length; i++)
                         {
@@ -452,7 +462,8 @@ namespace SwosGfx
                     {
                         File.WriteAllText(Path.Combine(outDir, $"Menu{extension}"), PaletteToCode("Menu", AmigaPalette.Menu, fileFormat));
                         File.WriteAllText(Path.Combine(outDir, $"Game{extension}"), PaletteToCode("Game", AmigaPalette.Game, fileFormat));
-                        
+                        File.WriteAllText(Path.Combine(outDir, $"Service{extension}"), PaletteToCode("Service", AmigaPalette.Service, fileFormat));
+
                         for (int i = 0; i < PitchPaletteNames.Length; i++)
                             File.WriteAllText(Path.Combine(outDir, $"{PitchPaletteNames[i]}{extension}"), PaletteToCode(PitchPaletteNames[i], AmigaPalette.Pitches[i], fileFormat));
                     }
@@ -460,6 +471,7 @@ namespace SwosGfx
                     {
                         File.WriteAllText(Path.Combine(outDir, $"Menu{extension}"), PaletteToCode("Menu", DosPalette.Menu.Take((int)colorCount).ToArray(), fileFormat));
                         File.WriteAllText(Path.Combine(outDir, $"Game{extension}"), PaletteToCode("Game", DosPalette.Game.Take((int)colorCount).ToArray(), fileFormat));
+                        File.WriteAllText(Path.Combine(outDir, $"Service{extension}"), PaletteToCode("Service", DosPalette.Service.Take((int)colorCount).ToArray(), fileFormat));
 
                         for (int i = 0; i < PitchPaletteNames.Length; i++)
                         {

@@ -901,9 +901,29 @@ class Program
                         string inPic = opts.Files[0];
                         string outBmp = opts.Files[1];
 
-                        var pic = DosPicture.Load(inPic);
+                        // Resolve the input through the default DOS dir (DosDirectory, "DOS")
+                        // so a bare filename like "SWTITLE.256" loads from DOS\. Falls back to
+                        // the path as given (absolute / cwd-relative).
+                        string dosPath = Path.Combine(dosDir, inPic);
+                        string inPath = File.Exists(dosPath) ? dosPath : inPic;
+
+                        var pic = DosPicture.Load(inPath);
                         if (pic.Error != DosPictureError.None || !pic.IsLoaded)
                             throw new InvalidOperationException($"Failed to load DOS picture '{inPic}': {pic.Error}");
+
+                        // Output may be a directory (write <inputname>.bmp inside it) or an
+                        // explicit .bmp file path. Treat anything that isn't a .bmp file as a dir.
+                        if (Directory.Exists(outBmp) ||
+                            !outBmp.EndsWith(".bmp", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Directory.CreateDirectory(outBmp);
+                            outBmp = Path.Combine(outBmp, Path.ChangeExtension(Path.GetFileName(inPic), ".bmp"));
+                        }
+                        else
+                        {
+                            string parent = Path.GetDirectoryName(outBmp);
+                            if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
+                        }
 
                         pic.SaveAsBmp(outBmp);
                     }
@@ -1055,6 +1075,11 @@ class Program
         if (String.Equals(key, "game", StringComparison.OrdinalIgnoreCase))
         {
             return colorCount > 16 ? DosPalette.Game : AmigaPalette.PaletteFromAmiga12(AmigaPalette.Game);
+        }
+
+        if (String.Equals(key, "service", StringComparison.OrdinalIgnoreCase))
+        {
+            return colorCount > 16 ? DosPalette.Service : AmigaPalette.PaletteFromAmiga12(AmigaPalette.Service);
         }
 
         if (String.Equals(key, "titlelogo", StringComparison.OrdinalIgnoreCase))
