@@ -928,13 +928,20 @@ namespace SwosGfx
         /// The BMP MUST be indexed; palette[] is not used for extraction
         /// (indices are taken directly) but is kept for API symmetry.
         /// </summary>
+        /// <summary>
+        /// Pass <paramref name="bitplanes"/> = 0 to auto-select the depth from the
+        /// image's highest palette index: 4 bitplanes if it only uses indices 0-15,
+        /// otherwise 8. This avoids storing empty upper planes for 16-colour art.
+        /// </summary>
         public void ConvertBmpToRaw(
             string inputBmpPath,
             uint[] palette,
             string outputRawPath,
             int bitplanes = 4)
         {
-            if (bitplanes < 1 || bitplanes > 8)
+            bool autoBitplanes = bitplanes <= 0;
+
+            if (!autoBitplanes && (bitplanes < 1 || bitplanes > 8))
                 throw new ArgumentOutOfRangeException(nameof(bitplanes), "Bitplanes must be between 1 and 8.");
 
             uint[] imgPal;
@@ -943,6 +950,18 @@ namespace SwosGfx
                 out imgPal,
                 out int imgWidth,
                 out int imgHeight);
+
+            if (autoBitplanes)
+            {
+                int highest = 0;
+                int rows = buffer.GetLength(0), cols = buffer.GetLength(1);
+                for (int yy = 0; yy < rows; yy++)
+                    for (int xx = 0; xx < cols; xx++)
+                        if (buffer[yy, xx] > highest) highest = buffer[yy, xx];
+
+                bitplanes = highest <= 15 ? 4 : 8;
+                Console.WriteLine($"  {Path.GetFileName(outputRawPath)}: max colour index {highest} -> {bitplanes} bitplanes");
+            }
 
             int bytesPerPlanePerRow = imgWidth / 8;
             int maxIndex = (1 << bitplanes) - 1;

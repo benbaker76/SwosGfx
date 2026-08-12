@@ -290,6 +290,78 @@ namespace SwosGfx
         }
 
         /// <summary>
+        /// Load a standalone sprite DAT file (e.g. TEAM1/TEAM2/TEAM3.DAT) as an
+        /// ordinal-indexed array of sprites. The file is a plain concatenation of
+        /// [24-byte header][planar pixels] records, exactly like the containers in
+        /// <see cref="Load"/>, but without the SPRITE.DAT index. Sprites are kept
+        /// in on-disk ("chained") form - decode with <see cref="DecodeSpriteChunky"/>.
+        /// </summary>
+        public static Sprite[] LoadSpritesFromDat(string path, int count)
+        {
+            if (path == null) throw new ArgumentNullException(nameof(path));
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Sprite DAT file not found.", path);
+
+            byte[] data = File.ReadAllBytes(path);
+            var sprites = new Sprite[count];
+
+            int offset = 0;
+            for (int j = 0; j < count; j++)
+            {
+                sprites[j] = ReadSpriteFromDatBuffer(
+                    data,
+                    ref offset,
+                    globalSpriteIndex: j,
+                    datFileIndex: 0);
+            }
+
+            return sprites;
+        }
+
+        /// <summary>
+        /// Decode a sprite's pixels into a top-down chunky buffer (one byte per
+        /// pixel, values 0..15). Index 0 is transparent. This de-chains the SWOS
+        /// internal 4-plane interleaved format first, matching <see cref="SaveSpriteToBmp"/>.
+        /// </summary>
+        public static byte[] DecodeSpriteChunky(Sprite spr, out int width, out int height)
+        {
+            if (spr == null) throw new ArgumentNullException(nameof(spr));
+
+            width = spr.Width;
+            height = spr.Height;
+
+            if (width <= 0 || height <= 0)
+            {
+                width = Math.Max(0, width);
+                height = Math.Max(0, height);
+                return Array.Empty<byte>();
+            }
+
+            var pixels = new byte[width * height]; // 0 = transparent by default
+
+            // spr.Data is stored "chained" (4-plane interleaved); de-chain a copy.
+            var data = (byte[])spr.Data.Clone();
+            DosSpriteCodec.ChainSprite(data, height, spr.WQuads);
+
+            int bytesPerLine = spr.WQuads * 8;
+
+            for (int y = 0; y < height; y++)
+            {
+                int srcBase = y * bytesPerLine;
+                int dstBase = y * width;
+
+                for (int x = 0; x < width; x++)
+                {
+                    byte packed = data[srcBase + (x >> 1)];
+                    byte index = (byte)((x & 1) == 0 ? (packed >> 4) : (packed & 0x0F));
+                    pixels[dstBase + x] = index; // keep 0 as transparent
+                }
+            }
+
+            return pixels;
+        }
+
+        /// <summary>
         /// Export a single sprite as 8bpp indexed BMP.
         /// Uses 0..15 as sprite colors, 16 as "transparent" background index.
         /// The palette entries are taken from menuPal/gamePal according to

@@ -36,7 +36,8 @@ class Program
         Pitch,
         Picture,
         SpritesExport,
-        SpritesImport
+        SpritesImport,
+        Dos2Amiga
     }
 
     private sealed class CliOptions
@@ -50,6 +51,7 @@ class Program
         public OutputKind Output = OutputKind.Unspecified;
         public string? PaletteName;
         public int Bitplanes = 4; // default 4 planes → 16 colors
+        public bool AutoBitplanes = false; // -bitplanes=auto: pick 4 or 8 per image
         public bool NoRnc = false;
         public int AmigaColorCount = 16;
 
@@ -67,6 +69,11 @@ class Program
         public PitchType PitchType = PitchType.Normal;
         public int DosColorCount = 256; // Reduce to N colors (16-256)
 
+        // -picture -scale[=WxH]: bilinear-enlarge the .256 output to WxH (default the
+        // Amiga full-screen 352x272). Used for the two DOS backdrops with no sprite
+        // source (SWTITLE->MENUBG, STAD->MENUBG2). null = no scaling.
+        public (int W, int H)? PictureScale = null;
+
         // DOS sprite options
         public byte SpriteBackgroundIndex = 0; // menu-palette index for background (color 16 in BMP)
 
@@ -79,6 +86,11 @@ class Program
         public AmigaPalette.ColorCount PaletteColorCount = AmigaPalette.ColorCount.Colors16;
         public bool PaletteFull = false;
         public PaletteFormat PaletteFormat = PaletteFormat.Act;
+
+        // --- font extend options ---
+        public bool FontExtendMode = false;
+        public string? GlyphsPath = null; // default: ./glyphs.txt
+        public bool NoMissingBoxes = false; // -no-boxes: skip the "missing glyph" box filler
     }
 
     public static int Main(string[] args)
@@ -121,6 +133,23 @@ class Program
                         opts.PaletteFormat);
 
                     return 0;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine("Error: " + ex.Message);
+                    return 2;
+                }
+            }
+
+            // Font-extend mode (add glyphs.txt glyphs into a CHARSET bmp).
+            if (opts.FontExtendMode)
+            {
+                try
+                {
+                    string inBmp = opts.Files[0];
+                    string outBmp = opts.Files.Count > 1 ? opts.Files[1] : opts.Files[0];
+                    string glyphs = opts.GlyphsPath ?? "glyphs.txt";
+                    return SwosFont.Extend(inBmp, outBmp, glyphs, emitIntegration: true, fillMissing: !opts.NoMissingBoxes);
                 }
                 catch (Exception ex)
                 {
@@ -223,6 +252,24 @@ class Program
                 }
                 options.DosMode = DosMode.Picture;
             }
+            else if (lower == "-scale")
+            {
+                options.PictureScale = (DosPictureScale.AmigaWidth, DosPictureScale.AmigaHeight);
+            }
+            else if (lower.StartsWith("-scale="))
+            {
+                string v = lower.Substring("-scale=".Length);
+                int xi = v.IndexOf('x');
+                if (xi <= 0
+                    || !int.TryParse(v.Substring(0, xi), out int sw)
+                    || !int.TryParse(v.Substring(xi + 1), out int sh)
+                    || sw <= 0 || sh <= 0)
+                {
+                    error = "-scale expects WxH, e.g. -scale=352x272.";
+                    return false;
+                }
+                options.PictureScale = (sw, sh);
+            }
             else if (lower == "-sprites-export")
             {
                 if (options.DosMode != DosMode.Pitch)
@@ -240,6 +287,15 @@ class Program
                     return false;
                 }
                 options.DosMode = DosMode.SpritesImport;
+            }
+            else if (lower == "-dos2amiga")
+            {
+                if (options.DosMode != DosMode.Pitch)
+                {
+                    error = "Cannot specify multiple DOS modes (-picture, -sprites-export, -sprites-import, -dos2amiga).";
+                    return false;
+                }
+                options.DosMode = DosMode.Dos2Amiga;
             }
             else if (lower.StartsWith("-sprite-bg="))
             {
@@ -327,18 +383,25 @@ class Program
             else if (lower.StartsWith("-bitplanes="))
             {
                 string value = lower.Substring("-bitplanes=".Length);
-                if (!int.TryParse(value, out int bitplanes))
+                if (value == "auto")
                 {
-                    error = $"Invalid bitplanes value '{value}'. Expected integer 1-8.";
-                    return false;
+                    options.AutoBitplanes = true;
                 }
-                if (bitplanes < 1 || bitplanes > 8)
+                else
                 {
-                    error = "Bitplanes must be between 1 and 8 (4=16 colors, 8=256 colors).";
-                    return false;
+                    if (!int.TryParse(value, out int bitplanes))
+                    {
+                        error = $"Invalid bitplanes value '{value}'. Expected integer 1-8 or 'auto'.";
+                        return false;
+                    }
+                    if (bitplanes < 1 || bitplanes > 8)
+                    {
+                        error = "Bitplanes must be between 1 and 8 (4=16 colors, 8=256 colors).";
+                        return false;
+                    }
+                    options.Bitplanes = bitplanes;
+                    options.AmigaColorCount = AmigaPalette.BitplanesToColors(bitplanes);
                 }
-                options.Bitplanes = bitplanes;
-                options.AmigaColorCount = AmigaPalette.BitplanesToColors(bitplanes);
             }
             else if (lower == "-no-rnc")
             {
@@ -378,6 +441,18 @@ class Program
             else if (lower == "-palettes")
             {
                 options.PaletteMode = true;
+            }
+            else if (lower == "-font-extend")
+            {
+                options.FontExtendMode = true;
+            }
+            else if (lower.StartsWith("-glyphs="))
+            {
+                options.GlyphsPath = arg.Substring("-glyphs=".Length); // preserve case
+            }
+            else if (lower == "-no-boxes")
+            {
+                options.NoMissingBoxes = true;
             }
             else if (lower.StartsWith("-pal-color="))
             {
@@ -483,6 +558,24 @@ class Program
         {
             // We ignore -amiga/-dos/-map/-output/etc in this mode.
             return true;
+        }
+
+        // Font-extend mode is independent of Amiga/DOS mode.
+        if (options.FontExtendMode)
+        {
+            if (options.Files.Count < 1 || options.Files.Count > 2)
+            {
+                error = "-font-extend expects: in.bmp [out.bmp] (out defaults to in, i.e. in-place).";
+                return false;
+            }
+            return true;
+        }
+
+        if (options.AutoBitplanes &&
+            (options.Platform != PlatformKind.Amiga || options.Output != OutputKind.Raw))
+        {
+            error = "-bitplanes=auto is only supported with Amiga -output=raw.";
+            return false;
         }
 
         // For Amiga, DOS-specific mode flags are invalid.
@@ -637,6 +730,22 @@ class Program
                         return false;
                     }
                     break;
+
+                case DosMode.Dos2Amiga:
+                    if (options.Input != InputKind.Unspecified)
+                    {
+                        error = "In -dos -dos2amiga mode, do not specify -map/-tmx/-bmp/-raw; input is implicit from the DOS folder.";
+                        return false;
+                    }
+
+                    // Output type is implicit (8bpp BMP banks); -output=... is ignored.
+                    // 0 args => current dir, 1 arg => output directory.
+                    if (options.Files.Count > 1)
+                    {
+                        error = $"In -dos -dos2amiga mode, expected 0 or 1 argument (output directory), got {options.Files.Count}.";
+                        return false;
+                    }
+                    break;
             }
         }
 
@@ -755,7 +864,7 @@ class Program
 
                     {
                         (var pal, var newPal) = GetPaletteRequired(opts.Files[0]);
-                        conv.ConvertBmpToRaw(inputPath, pal, outputPath, opts.Bitplanes);
+                        conv.ConvertBmpToRaw(inputPath, pal, outputPath, opts.AutoBitplanes ? 0 : opts.Bitplanes);
                         return 0;
                     }
 
@@ -925,7 +1034,20 @@ class Program
                             if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
                         }
 
-                        pic.SaveAsBmp(outBmp);
+                        if (opts.PictureScale.HasValue)
+                        {
+                            var (sw, sh) = opts.PictureScale.Value;
+                            byte[] scaled = DosPictureScale.ScaleBilinear(
+                                pic.Pixels, DosPicture.Width, DosPicture.Height, pic.Palette, sw, sh);
+                            DosPictureScale.SaveIndexedBmp(outBmp, scaled, sw, sh, pic.Palette);
+                            Console.WriteLine(
+                                $"Scaled '{Path.GetFileName(inPic)}' {DosPicture.Width}x{DosPicture.Height} -> " +
+                                $"'{Path.GetFileName(outBmp)}' {sw}x{sh} (bilinear, 8bpp).");
+                        }
+                        else
+                        {
+                            pic.SaveAsBmp(outBmp);
+                        }
                     }
                     else
                     {
@@ -974,6 +1096,15 @@ class Program
                     return 0;
                 }
 
+            case DosMode.Dos2Amiga:
+                {
+                    string outDir = opts.Files.Count == 0 ? Environment.CurrentDirectory : opts.Files[0];
+                    if (string.IsNullOrWhiteSpace(outDir))
+                        outDir = Environment.CurrentDirectory;
+
+                    return DosToAmiga.ConvertBanks(dosDir, outDir);
+                }
+
             default:
                 throw new ArgumentOutOfRangeException();
         }
@@ -1019,6 +1150,22 @@ class Program
         Console.WriteLine("    SwosGfx -dos -sprites-import spritesDir");
         Console.WriteLine("      (reads sprNNNN.bmp, inserts and saves changes)");
         Console.WriteLine();
+        Console.WriteLine("DOS -> Amiga bank conversion (rebuild Amiga sprite banks from DOS graphics):");
+        Console.WriteLine("  SwosGfx -dos -dos2amiga [outDir]");
+        Console.WriteLine("    Reads SPRITE.DAT + *.DAT from ./DOS (or -dos-dir=...) and writes 8bpp");
+        Console.WriteLine("    256-colour BMP banks with the original Amiga sprite layout, sourced");
+        Console.WriteLine("    from the DOS graphics + DOS palette. Produces: CJCGRAFS, CJCTEAM1,");
+        Console.WriteLine("    CJCTEAM2, CJCTEAM3, CJCTEAMG, CJCBITS, SOCCER_S, CJCBENCH (gameplay,");
+        Console.WriteLine("    Game palette), plus CHARSET, MENUS, MENUS2 (menu, Menu palette).");
+        Console.WriteLine();
+        Console.WriteLine("Font extend (add extended glyphs from glyphs.txt into a CHARSET bmp):");
+        Console.WriteLine("  SwosGfx -font-extend [-glyphs=glyphs.txt] [-no-boxes] charset.bmp [out.bmp]");
+        Console.WriteLine("    Draws the full-ASCII + accented glyphs into the free cells of the");
+        Console.WriteLine("    charset sheet (palette preserved; works for AGA or OCS CHARSET), and");
+        Console.WriteLine("    fills empty cells with the 'missing glyph' box (rows 0-27; -no-boxes");
+        Console.WriteLine("    skips this). If out.bmp is omitted the input is overwritten. Also");
+        Console.WriteLine("    writes integration.txt.");
+        Console.WriteLine();
         Console.WriteLine("Common options:");
         Console.WriteLine("  -amiga                    Amiga mode (default)");
         Console.WriteLine("  -dos                      DOS mode");
@@ -1028,6 +1175,7 @@ class Program
         Console.WriteLine("  -output=bmp|tmx|map|raw   Output type");
         Console.WriteLine("  -palette=<name>           Palette (Amiga): Soft, Muddy, Frozen, Dry, Normal, Hard, Wet");
         Console.WriteLine("  -bitplanes=N              Bitplanes 1-8 (default 4; 4=16 colors, 8=256)");
+        Console.WriteLine("  -bitplanes=auto           Auto: 4 planes if image uses only colors 0-15, else 8 (-output=raw only)");
         Console.WriteLine("  -no-rnc                   Disable RNC compression for Amiga MAP/RAW outputs");
         Console.WriteLine("  -pitch=N                  DOS pitch index (0..MaxPitch-1), default 0");
         Console.WriteLine("  -type=name                DOS pitch type: frozen, muddy, wet, soft, normal, dry, hard");
@@ -1035,6 +1183,7 @@ class Program
         Console.WriteLine("  -picture                  DOS: operate on a .256 picture file");
         Console.WriteLine("  -sprites-export           DOS: export all sprites to sprNNNN.bmp files");
         Console.WriteLine("  -sprites-import           DOS: import sprNNNN.bmp files into DAT/SPRITE.DAT");
+        Console.WriteLine("  -dos2amiga                DOS: rebuild Amiga gameplay banks from DOS graphics");
         Console.WriteLine("  -sprite-bg=N              DOS sprites: menu palette index for background color (in BMP slot 16)");
         Console.WriteLine("  -h, -?                    Show this help");
         Console.WriteLine();

@@ -95,6 +95,90 @@ SwosGfx -dos -sprites-import spritesDir
 
 ---
 
+### DOS → Amiga bank conversion (`-dos2amiga`)
+
+Rebuilds the Amiga sprite / menu / charset banks from the **DOS** graphics: each DOS
+sprite is placed at the exact position the original Amiga bank uses (read from the SWOS
+image-command scripts), and the result is written as an 8bpp indexed BMP using the DOS
+palette. This is the inverse of how the game extracts sprites from a bank.
+
+```bash
+SwosGfx -dos -dos2amiga [outDir]
+```
+
+Produces 11 banks:
+
+* **Gameplay** (Game palette): `CJCGRAFS`, `CJCTEAM1`, `CJCTEAM2`, `CJCTEAM3`, `CJCTEAMG`, `CJCBITS`, `SOCCER_S`, `CJCBENCH`
+* **Menu / charset** (Menu palette): `CHARSET`, `MENUS`, `MENUS2`
+
+DOS sprite indices map to Amiga indices as `Amiga = DOS − 114` for gameplay sprites
+(DOS index ≥ 227) and 1:1 for the menu / charset sprites. `CJCTEAM1/2/3` share one
+layout, sourced from `TEAM1/TEAM2/TEAM3.DAT` respectively; `SOCCER_S` (the big R/S
+rotation) uses palette slots `0x70..0x7F`. Full-screen images with no DOS equivalent
+(`LOADER*`, `DISK22`, `OLDDISK1`, `MENUBG*`, `RAINBOW`) are not produced by this mode.
+
+---
+
+## DOS → Amiga AGA build (`!DOS2AGA.bat`)
+
+`!DOS2AGA.bat` (in `bin/Debug/net8.0`) converts the DOS graphics into a complete Amiga
+**AGA** set in `Amiga_AGA`, ready for the AGA port:
+
+1. `-raw -output=bmp -colors=256` — Amiga-only full-screen images (loaders / backgrounds)
+2. `-dos -dos2amiga` — rebuild the 11 sprite / menu / charset banks from the DOS graphics
+3. `-dos -output=bmp -colors=256` — render the DOS pitches
+4. `-bmp -output=raw -bitplanes=auto` — pack each bank to RAW (4bpp or 8bpp, see below)
+5. `-bmp -output=map -bitplanes=8` — pack the DOS pitches to AGA MAP
+
+### Bit depth per file (`-bitplanes=auto`)
+
+`-bitplanes=auto` picks the smallest depth that fits each image: **4bpp** if it only
+uses palette indices 0–15, otherwise **8bpp**. Because the DOS sprites are natively 4bpp,
+most banks stay 4bpp (half the size) instead of storing empty upper planes — only art
+that genuinely needs the higher palette entries is written as 8bpp.
+
+| Output | Depth | Reason |
+| ------ | :---: | ------ |
+| `CHARSET`, `MENUS`, `MENUS2` | **4bpp** | menu / charset sprites, colours 0–15 |
+| `CJCGRAFS`, `CJCTEAM1`, `CJCTEAM2`, `CJCTEAM3`, `CJCTEAMG`, `CJCBITS`, `CJCBENCH` | **4bpp** | gameplay sprites, colours 0–15 |
+| `SOCCER_S` | **8bpp** | big R/S rotation uses palette `0x70..0x7F` |
+| `MENUBG`, `MENUBG2` | **8bpp** | background, colours sit at high indices |
+| `DISK22`, `OLDDISK1` | **8bpp** | remapped to the 256-colour palette |
+| `LOADER00`–`LOADER10`, `LOADER76`, `LOADER8A`, `LOADER8B` | **8bpp** | remapped to the 256-colour palette |
+| `RAINBOW` | **8bpp** | full 256-colour image |
+| `SWCPICH1`–`SWCPICH6` (pitches) | **8bpp** | 256-colour tiles |
+
+> **Palettes are not baked into the RAW/MAP** (they store indices only). The AGA port
+> supplies the 256-colour DOS palette: the **Menu** palette for `CHARSET`/`MENUS`/`MENUS2`
+> and the **Game** palette for the gameplay banks and pitches. RAW/MAP output stays
+> RNC-compressed (add `-no-rnc` for uncompressed).
+
+### Extended font (`-font-extend`)
+
+`!DOS2AGA.bat` runs the font extender on `CHARSET.bmp` (after `-dos2amiga`, before the RAW
+conversion) to draw the full-ASCII + accented glyphs into the sheet's free cells:
+
+```bash
+SwosGfx -font-extend [-glyphs=glyphs.txt] charset.bmp [out.bmp]
+```
+
+* The glyph shapes come from **`glyphs.txt`** (`*`=ink, `-`=blank; one `@<char> <small|big>`
+  block per glyph). Edit it to **add / remove / change** glyphs; the 1px drop-shadow
+  (palette index 8) is added automatically.
+* New glyphs go into the free 16×8 cells (small font top half, big font bottom half) from
+  sprite slot **1220**, matching the game's `font_ext_script.inc`.
+* The input **palette is preserved** (indices 2=white, 8=shade), so it works for both the
+  **AGA** CHARSET (DOS palette, from `-dos2amiga`) and an **OCS** CHARSET (Amiga palette).
+  Omit `out.bmp` to overwrite in place.
+* Empty cells in rows 0–27 are filled with the **"missing glyph" box** (the ⊠ marker the
+  stock Amiga charset draws in unused cells); rows 28–31 stay blank. Pass `-no-boxes` to
+  skip this. Cells that already hold a glyph or box are left untouched.
+* An **`integration.txt`** (image-script + conversionTable wiring) is written next to
+  `glyphs.txt` — apply it to the game side if you change `glyphs.txt`, so the extraction
+  positions stay in sync.
+
+---
+
 ## Directories
 
 * Amiga graphics files: `./Amiga` (default, can be changed with `-amiga-dir=<path>`)
@@ -235,6 +319,7 @@ For the pitch palettes each color is written to index 0, 7, 9, 78, 79, 80, 81, 1
 
 -palette=<name>           Palette (Amiga): Soft, Muddy, Frozen, Dry, Normal, Hard, Wet
 -bitplanes=N              Bitplanes 1-8 (default 4; 4=16 colors, 8=256)
+-bitplanes=auto           Auto: 4bpp if image only uses colors 0-15, else 8bpp (-output=raw only)
 -no-rnc                   Disable RNC compression for Amiga MAP/RAW outputs
 
 # DOS pitch options
@@ -257,11 +342,12 @@ For the pitch palettes each color is written to index 0, 7, 9, 78, 79, 80, 81, 1
 ## Bitplanes (optional, default 4)
 
 ```text
-4 = 16 colors
-5 = 32 colors
-6 = 64 colors
-7 = 128 colors
-8 = 256 colors
+4    = 16 colors
+5    = 32 colors
+6    = 64 colors
+7    = 128 colors
+8    = 256 colors
+auto = 4 if the image only uses colors 0-15, otherwise 8 (-output=raw only)
 ```
 
 ---
