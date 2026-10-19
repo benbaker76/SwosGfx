@@ -1,0 +1,85 @@
+# Build swosgfx for Windows, macOS and Linux on every push and pull request,
+# run the tests, and keep the executables as artifacts. A tag v* also makes a
+# GitHub release with one archive per platform.
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            exe: swosgfx.exe
+          - name: macos-universal
+            os: macos-14
+            exe: swosgfx
+            cmake_args: -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          - name: linux-x64
+            os: ubuntu-22.04
+            exe: swosgfx
+          - name: linux-arm64
+            os: ubuntu-22.04-arm
+            exe: swosgfx
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSWOSGFX_TESTS=ON ${{ matrix.cmake_args }}
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p dist/swosgfx
+          bin=build/${{ matrix.exe }}
+          [ -f "$bin" ] || bin=build/Release/${{ matrix.exe }}
+          cp "$bin" dist/swosgfx/
+          cp README.md LICENSE dist/swosgfx/
+          cp -r assets dist/swosgfx/
+          "dist/swosgfx/${{ matrix.exe }}" -h > /dev/null || true
+          if [ "$RUNNER_OS" = "macOS" ]; then lipo -info "dist/swosgfx/${{ matrix.exe }}"; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: swosgfx-${{ matrix.name }}
+          path: dist/swosgfx
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Archive
+        run: |
+          cd artifacts
+          for d in swosgfx-*; do
+            chmod +x "$d/swosgfx" 2>/dev/null || true
+            (cd "$d" && zip -qr "../$d-${GITHUB_REF_NAME}.zip" .)
+          done
+          ls -la
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.zip
+          generate_release_notes: true
